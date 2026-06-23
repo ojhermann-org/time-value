@@ -1,0 +1,23 @@
+[package]
+name = "time_value"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Type-safe time-value-of-money calculations in Rust"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ojhermann-org/time-value"
+homepage = "https://crates.io/crates/time_value"
+documentation = "https://docs.rs/time_value"
+readme = "README.md"
+keywords = ["finance", "tvm", "npv", "irr", "annuity"]
+categories = ["finance", "mathematics", "no-std"]
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
