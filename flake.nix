@@ -91,11 +91,11 @@
 
           # git-hooks.nix: fast pre-commit hooks. Heavy clippy/test live in the
           # crane checks above and in `nix flake check` / CI.
-          pre-commit = git-hooks.lib.${pkgs.system}.run {
+          pre-commit = git-hooks.lib.${pkgs.stdenv.hostPlatform.system}.run {
             src = ./.;
             hooks = {
               rustfmt.enable = true;
-              nixfmt-rfc-style.enable = true;
+              nixfmt.enable = true;
               typos.enable = true;
               trim-trailing-whitespace.enable = true;
               end-of-file-fixer.enable = true;
@@ -111,7 +111,7 @@
         pkgs:
         let
           t = mkToolset pkgs;
-          pre-commit = self.checks.${pkgs.system}.pre-commit;
+          pre-commit = self.checks.${pkgs.stdenv.hostPlatform.system}.pre-commit;
         in
         {
           default = pkgs.mkShell {
@@ -119,7 +119,7 @@
               t.rustToolchain
               pkgs.bacon
               pkgs.cargo-nextest
-              pkgs.nixfmt-rfc-style
+              pkgs.nixfmt
             ];
             # Installs the git-hooks managed pre-commit hook on shell entry.
             inherit (pre-commit) shellHook;
@@ -138,6 +138,6 @@
         }
       );
 
-      formatter = forAllSystems (pkgs: pkgs.nixfmt-rfc-style);
+      formatter = forAllSystems (pkgs: pkgs.nixfmt);
     };
 }
