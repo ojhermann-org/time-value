@@ -53,8 +53,14 @@ synchronous and `no_std`. Architecture decisions are logged under `docs/adr/`.
   nix develop -c cargo clippy -p time_value --no-default-features --features libm --all-targets -- -D warnings  # no_std + libm
   nix develop -c cargo nextest run --workspace --all-features
   nix develop -c cargo test --doc --workspace --all-features                        # doctests
+  nix develop .#msrv -c cargo test -p time_value --all-features                     # core MSRV (1.85)
   nix develop -c cargo deny check
   ```
+
+  The core `time_value` crate keeps a conservative **MSRV of 1.85** (declared per
+  crate, below the workspace's 1.88 toolchain, which the MCP crate's deps force);
+  the `.#msrv` devShell pins rustc 1.85 and CI verifies the core there so the
+  promise can't silently regress (`docs/adr/0017-per-crate-msrv-core-1.85.md`).
 
   Both feature configurations are checked: default features build the `no_std`,
   zero-dep core (catching an accidental `std` dependency), and `--all-features`

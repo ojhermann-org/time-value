@@ -2,7 +2,10 @@
 name = "time_value"
 version = "1.0.0"
 edition.workspace = true
-rust-version.workspace = true
+# The core library keeps a conservative MSRV, below the workspace's 1.88
+# toolchain (which the MCP binary's deps force). CI verifies it on a real 1.85
+# toolchain — see docs/adr/0017-per-crate-msrv-core-1.85.md.
+rust-version = "1.85"
 license.workspace = true
 repository.workspace = true
 description = "Type-safe time-value-of-money calculations in Rust"

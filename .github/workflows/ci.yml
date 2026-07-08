@@ -70,5 +70,11 @@ jobs:
       - name: Doctests
         run: nix develop -c cargo test --doc --workspace --all-features
 
+      # The core library keeps a conservative MSRV (1.85) below the workspace
+      # toolchain (1.88, forced by the MCP crate's deps). Verify it on a real 1.85
+      # toolchain so the promise can't silently regress (ADR-0017).
+      - name: Core MSRV (1.85)
+        run: nix develop .#msrv -c cargo test -p time_value --all-features
+
       - name: Licences & advisories
         run: nix develop -c cargo deny check
