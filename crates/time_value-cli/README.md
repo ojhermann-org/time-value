@@ -4,6 +4,15 @@ The command-line interface for [`time_value`](../time_value) — type-safe
 time-value-of-money calculations from your shell. Installs the `time-value`
 binary. Its surface is designed in [ADR-0010](../../docs/adr/0010-cli-surface.md).
 
+## Install
+
+Not yet published to crates.io (see [ADR-0012](../../docs/adr/0012-ci-and-release-automation.md)).
+From a checkout of the repository:
+
+```sh
+cargo install --path crates/time_value-cli   # installs the `time-value` binary
+```
+
 ## Usage
 
 `--rate` is a **per-period** rate; cashflows are positional (period 0 first,

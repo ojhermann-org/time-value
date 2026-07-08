@@ -8,15 +8,54 @@ an annual rate to monthly cashflows, discounting with an economically
 meaningless rate — into *compile errors*, while keeping the common path
 ergonomic. `#![no_std]` and dependency-free by default.
 
-> **Status:** `1.0.0` is under active design. The public API is being built up
-> incrementally — this is the early scaffolding.
+## The idea
+
+Values are validated newtypes, and **periodicity is part of the type**:
+
+- `Money` — an always-finite monetary amount (cashflows are signed: outflow
+  negative, inflow positive).
+- `Rate<P>` — a per-period rate (finite, greater than −100%) tagged with a
+  `Periodicity` marker `P` (`Annual`, `SemiAnnual`, `Quarterly`, `Monthly`,
+  `Weekly`, `Daily`).
+- `Cashflows<P>` — a periodicity-tagged series.
+
+Because `Rate<Monthly>` and `Rate<Annual>` are distinct types, discounting
+monthly cashflows with an annual rate **does not compile** — the classic TVM bug
+is caught before it can run.
+
+## What it computes
+
+| Available on | Operations |
+|--------------|------------|
+| **any build** (`no_std`, zero dependencies) | `Cashflows::net_present_value`, `net_future_value`, `internal_rate_of_return` — they need only elementary arithmetic |
+| **with `std` or `libm`** | single-sum `present_value` / `future_value`, and `annuity::present_value` / `future_value` / `payment` — they need `powf`, so they also admit a fractional number of periods |
+
+## Example
+
+```rust
+use time_value::{Cashflows, Money, Monthly, Rate};
+
+// Pay 100 now, receive 60 next month and 60 the month after.
+let flows = [Money::new(-100.0)?, Money::new(60.0)?, Money::new(60.0)?];
+let project = Cashflows::<Monthly>::new(&flows);
+
+let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?);
+assert!(npv.value() > 0.0);                    // worth doing at 1%/month
+
+let irr = project.internal_rate_of_return()?;  // ≈ 0.1307 per month
+```
+
+(The constructors and `internal_rate_of_return` are fallible — `?` propagates a
+[`TvmError`].)
+
+[`TvmError`]: https://docs.rs/time_value/latest/time_value/enum.TvmError.html
 
 ## Features
 
 | Feature | Default | Effect |
 |---------|:-------:|--------|
-| `std`   |    no   | Use `std` for transcendental math and error impls. |
-| `libm`  |    no   | `no_std` transcendental functions (`powf`/`ln`/`exp`) via [`libm`], for IRR and continuous compounding without `std`. |
+| `std`   |    no   | Use `std` for the transcendental math (`f64::powf`). |
+| `libm`  |    no   | Provide that math via [`libm`] instead, so the single-sum and annuity operations work in a `no_std` build. |
 | `serde` |    no   | Derive `Serialize`/`Deserialize` on the domain newtypes. |
 
 [`libm`]: https://crates.io/crates/libm

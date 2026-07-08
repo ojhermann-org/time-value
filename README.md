@@ -19,6 +19,29 @@ Dependencies point one way, toward the library; the binaries depend on
 `time_value` by workspace path (see [ADR-0002](docs/adr/0002-workspace-layout.md)).
 Architecture decisions are recorded under [`docs/adr/`](docs/adr).
 
+## Quick look
+
+As a library ([`crates/time_value`](crates/time_value)):
+
+```rust
+use time_value::{Cashflows, Money, Monthly, Rate};
+
+let flows = [Money::new(-100.0)?, Money::new(60.0)?, Money::new(60.0)?];
+let project = Cashflows::<Monthly>::new(&flows);
+let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?); // ≈ 18.22
+let irr = project.internal_rate_of_return()?;                     // ≈ 0.1307
+```
+
+From the shell ([`time-value` CLI](crates/time_value-cli)):
+
+```sh
+time-value npv --rate 0.01 -100 60 60   # 18.2237…
+time-value irr -100 60 60               # 0.1307… per period
+```
+
+The [`time-value-mcp` server](crates/time_value-mcp) exposes the same operations
+as MCP tools for assistants.
+
 ## Development
 
 This repo is Nix-native. `direnv` activates the dev shell automatically via
@@ -39,9 +62,16 @@ is no second source of truth for the toolchain:
 ```sh
 nix develop -c cargo fmt --all -- --check
 nix develop -c cargo clippy --workspace --all-targets --all-features -- -D warnings
-nix develop -c cargo nextest run --workspace
+nix develop -c cargo nextest run --workspace --all-features
+nix develop -c cargo test --doc --workspace --all-features
 nix develop -c cargo deny check
 ```
+
+The workspace builds on Rust **1.88** (`rust-toolchain.toml`); the published
+`time_value` library keeps a lower **1.85** MSRV, which CI verifies separately
+(`nix develop .#msrv -c cargo test -p time_value --all-features`). The canonical
+check list is [`.github/workflows/ci.yml`](.github/workflows/ci.yml); `CLAUDE.md`
+documents the full workflow.
 
 `bacon` runs the workspace `clippy` job by default (see `bacon.toml`); a project
 Zellij layout wires it into a dedicated pane:
