@@ -48,10 +48,17 @@ synchronous and `no_std`. Architecture decisions are logged under `docs/adr/`.
 
   ```sh
   nix develop -c cargo fmt --all -- --check
+  nix develop -c cargo clippy --workspace --all-targets -- -D warnings              # no_std default
   nix develop -c cargo clippy --workspace --all-targets --all-features -- -D warnings
-  nix develop -c cargo nextest run --workspace
+  nix develop -c cargo nextest run --workspace --all-features
+  nix develop -c cargo test --doc --workspace --all-features                        # doctests
   nix develop -c cargo deny check
   ```
+
+  Both feature configurations are checked: default features build the `no_std`,
+  zero-dep core (catching an accidental `std` dependency), and `--all-features`
+  exercises the feature-gated operations and their tests. Doctests are run
+  separately because `nextest` does not run them.
 
 - `nix flake check` now only validates the pre-commit hook set (the crane build
   checks were retired when CI moved to `nix develop -c cargo …`).
