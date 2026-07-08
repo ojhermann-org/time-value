@@ -1,21 +1,21 @@
-# Bacon job definitions. The default job mirrors the `clippy` flake check so the
-# bacon pane and `nix flake check` / CI are checking the same thing.
+# Bacon job definitions. The default job mirrors the CI `clippy` check so the
+# bacon pane and CI are checking the same thing across the whole workspace.
 default_job = "clippy"
 
 [jobs.check]
-command = ["cargo", "check", "--all-targets"]
+command = ["cargo", "check", "--workspace", "--all-targets", "--all-features"]
 need_stdout = false
 
 [jobs.clippy]
-command = ["cargo", "clippy", "--all-targets", "--", "--deny", "warnings"]
+command = ["cargo", "clippy", "--workspace", "--all-targets", "--all-features", "--", "--deny", "warnings"]
 need_stdout = false
 
 [jobs.test]
-command = ["cargo", "test"]
+command = ["cargo", "nextest", "run", "--workspace"]
 need_stdout = true
 
 [jobs.doc]
-command = ["cargo", "doc", "--no-deps"]
+command = ["cargo", "doc", "--workspace", "--no-deps"]
 need_stdout = false
 
 [keybindings]

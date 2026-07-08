@@ -7,7 +7,6 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane.url = "github:ipetkov/crane";
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -19,7 +18,6 @@
       self,
       nixpkgs,
       rust-overlay,
-      crane,
       git-hooks,
       ...
     }:
@@ -42,99 +40,55 @@
           )
         );
 
-      # Everything a system needs to build/check the crate, derived once per system.
-      mkToolset =
+      # git-hooks.nix: fast pre-commit hooks, kept as a local convenience. The
+      # heavy checks (clippy/test/deny) run through the same flake in CI as
+      # `nix develop -c cargo …` — see docs/adr/0012-ci-and-release-automation.md.
+      mkPreCommit =
         pkgs:
-        let
-          rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-          craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
-          src = craneLib.cleanCargoSource ./.;
-          commonArgs = {
-            inherit src;
-            strictDeps = true;
-            buildInputs = nixpkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
+        git-hooks.lib.${pkgs.stdenv.hostPlatform.system}.run {
+          src = ./.;
+          hooks = {
+            rustfmt.enable = true;
+            nixfmt.enable = true;
+            typos.enable = true;
+            trim-trailing-whitespace.enable = true;
+            end-of-file-fixer.enable = true;
+            check-toml.enable = true;
+            check-merge-conflicts.enable = true;
+            detect-private-keys.enable = true;
           };
-          cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-        in
-        {
-          inherit
-            rustToolchain
-            craneLib
-            src
-            commonArgs
-            cargoArtifacts
-            ;
         };
     in
     {
-      checks = forAllSystems (
-        pkgs:
-        let
-          t = mkToolset pkgs;
-        in
-        {
-          build = t.craneLib.buildPackage (t.commonArgs // { inherit (t) cargoArtifacts; });
-
-          clippy = t.craneLib.cargoClippy (
-            t.commonArgs
-            // {
-              inherit (t) cargoArtifacts;
-              cargoClippyExtraArgs = "--all-targets -- --deny warnings";
-            }
-          );
-
-          test = t.craneLib.cargoTest (t.commonArgs // { inherit (t) cargoArtifacts; });
-
-          doc = t.craneLib.cargoDoc (t.commonArgs // { inherit (t) cargoArtifacts; });
-
-          fmt = t.craneLib.cargoFmt { inherit (t) src; };
-
-          # git-hooks.nix: fast pre-commit hooks. Heavy clippy/test live in the
-          # crane checks above and in `nix flake check` / CI.
-          pre-commit = git-hooks.lib.${pkgs.stdenv.hostPlatform.system}.run {
-            src = ./.;
-            hooks = {
-              rustfmt.enable = true;
-              nixfmt.enable = true;
-              typos.enable = true;
-              trim-trailing-whitespace.enable = true;
-              end-of-file-fixer.enable = true;
-              check-toml.enable = true;
-              check-merge-conflicts.enable = true;
-              detect-private-keys.enable = true;
-            };
-          };
-        }
-      );
+      # `nix flake check` validates the pre-commit hook set. The workspace's own
+      # verification (fmt/clippy/test/deny) is run via `nix develop -c cargo …`
+      # (locally, and in CI) so there is one definition of each tool.
+      checks = forAllSystems (pkgs: {
+        pre-commit = mkPreCommit pkgs;
+      });
 
       devShells = forAllSystems (
         pkgs:
         let
-          t = mkToolset pkgs;
-          pre-commit = self.checks.${pkgs.stdenv.hostPlatform.system}.pre-commit;
+          # The toolchain (with clippy/rustfmt/rust-src) is pinned by
+          # rust-toolchain.toml; oxalica/rust-overlay reads it.
+          rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
+          pre-commit = mkPreCommit pkgs;
         in
         {
           default = pkgs.mkShell {
             packages = [
-              t.rustToolchain
+              rustToolchain
               pkgs.bacon
               pkgs.cargo-nextest
+              pkgs.cargo-deny
               pkgs.nixfmt
             ];
+            buildInputs =
+              pre-commit.enabledPackages ++ nixpkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
             # Installs the git-hooks managed pre-commit hook on shell entry.
             inherit (pre-commit) shellHook;
-            buildInputs = pre-commit.enabledPackages;
           };
-        }
-      );
-
-      packages = forAllSystems (
-        pkgs:
-        let
-          t = mkToolset pkgs;
-        in
-        {
-          default = t.craneLib.buildPackage (t.commonArgs // { inherit (t) cargoArtifacts; });
         }
       );
 

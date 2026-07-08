@@ -1,23 +1,57 @@
-[package]
-name = "time_value"
-version = "1.0.0"
+[workspace]
+resolver = "2"
+members = [
+    "crates/time_value",
+    "crates/time_value-cli",
+    "crates/time_value-mcp",
+]
+
+# Shared metadata, dependency versions, and lints, inherited by member crates via
+# `field.workspace = true` (see docs/adr/0002-workspace-layout.md).
+[workspace.package]
+# No shared `version`: each crate carries its own (independent semver, driven by
+# release-plz from Conventional Commits — docs/adr/0012-ci-and-release-automation.md).
 edition = "2021"
 rust-version = "1.85"
-description = "Type-safe time-value-of-money calculations in Rust"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ojhermann-org/time-value"
-homepage = "https://crates.io/crates/time_value"
-documentation = "https://docs.rs/time_value"
-readme = "README.md"
-keywords = ["finance", "tvm", "npv", "irr", "annuity"]
-categories = ["finance", "mathematics", "no-std"]
 
-[dependencies]
+[workspace.dependencies]
+# Internal crates are depended on by workspace path so a breaking change cannot
+# compile-pass its consumers without updating them (ADR-0002).
+time_value = { path = "crates/time_value" }
 
-[lints.rust]
+# Binary-only: CLI arg parsing and ergonomic error context. The core library
+# owns its own typed errors (ADR-0004); `anyhow` is for the binaries' `main`.
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+
+# Serialisation for the JSON / MCP surfaces. The core library gates its own
+# `serde` derives behind a feature (ADR-0005); the binaries enable it.
+# `default-features = false` keeps the inherited dep `no_std`-compatible for the
+# core; the binaries add `std` (serde_json pulls it in transitively anyway).
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = "1"
+
+# MCP-binary-only (ADR-0011): the MCP SDK over stdio, its async runtime, and
+# JSON-Schema derivation for tool inputs. Async is contained to `-mcp`
+# (ADR-0003); the core library stays synchronous and `no_std`.
+rmcp = { version = "2.1", features = ["server", "macros", "transport-io", "schemars"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "sync"] }
+schemars = "1"
+
+# Core optional (ADR-0009): transcendental functions (`powf`/`ln`/`exp`) for
+# `no_std` builds, feature-gated so the default core stays dependency-free.
+libm = "0.2"
+
+# Dev-only: run the compiled CLI/MCP binary and assert on stdout/stderr/exit.
+assert_cmd = "2"
+predicates = "3"
+
+[workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
