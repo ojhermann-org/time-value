@@ -31,3 +31,9 @@ libm = ["dep:libm"]
 
 [dependencies]
 libm = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Property-based tests (tests/properties.rs). Dev-only, so it never enters the
+# published crate's dependency tree — the zero-dependency promise is about what
+# a downstream user pulls in (ADR-0009), not the test harness.
+proptest = { workspace = true }

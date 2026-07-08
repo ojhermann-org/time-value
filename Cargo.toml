@@ -48,6 +48,12 @@ libm = "0.2"
 assert_cmd = "2"
 predicates = "3"
 
+# Dev-only: property-based tests for the core's numeric laws. A test framework,
+# never part of the published dependency tree (ADR-0009 constrains distribution,
+# not test tooling); the core-MSRV CI step builds rather than tests so its MSRV
+# does not gate the core's 1.85 (ADR-0017).
+proptest = "1"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
