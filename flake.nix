@@ -89,6 +89,16 @@
             # Installs the git-hooks managed pre-commit hook on shell entry.
             inherit (pre-commit) shellHook;
           };
+
+          # A minimal 1.85 toolchain to verify the core library's MSRV
+          # (docs/adr/0017-per-crate-msrv-core-1.85.md). The workspace builds on
+          # 1.88 (rust-toolchain.toml); only `cargo test -p time_value` runs here.
+          msrv = pkgs.mkShell {
+            packages = [
+              pkgs.rust-bin.stable."1.85.0".minimal
+            ]
+            ++ nixpkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
+          };
         }
       );
 

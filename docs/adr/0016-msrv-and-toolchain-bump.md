@@ -1,6 +1,6 @@
 # ADR-0016: Toolchain & MSRV bump to 1.88 for the MCP server
 
-- **Status:** Accepted
+- **Status:** Accepted (single-MSRV stance amended by [ADR-0017](0017-per-crate-msrv-core-1.85.md) — the core keeps a verified 1.85 MSRV; the toolchain bump to 1.88 stands)
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 - **Amends:** [ADR-0007](0007-rust-edition-and-msrv.md) (the version numbers)

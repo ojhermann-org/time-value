@@ -34,4 +34,5 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0013](0013-core-api-values-and-discrete-operations.md) | Core API — values, cashflows & discrete operations | Accepted |
 | [0014](0014-transcendental-single-sum-operations.md) | Transcendental operations behind `std`/`libm` — single-sum value | Accepted |
 | [0015](0015-annuities.md) | Annuities — convention, the `r → 0` limit, and a fallible payment | Accepted |
-| [0016](0016-msrv-and-toolchain-bump.md) | Toolchain & MSRV bump to 1.88 for the MCP server | Accepted |
+| [0016](0016-msrv-and-toolchain-bump.md) | Toolchain & MSRV bump to 1.88 for the MCP server | Accepted (amended by 0017) |
+| [0017](0017-per-crate-msrv-core-1.85.md) | Per-crate MSRV — the core keeps 1.85, verified separately | Accepted |
