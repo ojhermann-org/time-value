@@ -1,6 +1,6 @@
 # ADR-0013: Core API — values, cashflows & discrete operations
 
-- **Status:** Accepted
+- **Status:** Accepted (the IRR solver gained a bisection fallback — [ADR-0020](0020-robust-irr-newton-with-bisection-fallback.md))
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 
