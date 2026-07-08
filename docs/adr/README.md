@@ -28,17 +28,10 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0007](0007-rust-edition-and-msrv.md) | Rust edition & MSRV | Accepted |
 | [0008](0008-nix-flake-dev-environment.md) | Nix flake dev environment | Accepted |
 | [0009](0009-no_std-and-optional-libm.md) | `no_std` core & optional `libm` | Accepted |
+| [0010](0010-cli-surface.md) | CLI surface | Accepted |
+| [0011](0011-mcp-server.md) | MCP server | Accepted |
 | [0012](0012-ci-and-release-automation.md) | CI and release automation | Accepted |
 | [0013](0013-core-api-values-and-discrete-operations.md) | Core API — values, cashflows & discrete operations | Accepted |
 | [0014](0014-transcendental-single-sum-operations.md) | Transcendental operations behind `std`/`libm` — single-sum value | Accepted |
 | [0015](0015-annuities.md) | Annuities — convention, the `r → 0` limit, and a fallible payment | Accepted |
-
-### Planned
-
-These decisions are designed alongside the surfaces they describe; the numbers
-are reserved and referenced from the code:
-
-| # | Title |
-|---|-------|
-| 0010 | CLI surface |
-| 0011 | MCP server |
+| [0016](0016-msrv-and-toolchain-bump.md) | Toolchain & MSRV bump to 1.88 for the MCP server | Accepted |

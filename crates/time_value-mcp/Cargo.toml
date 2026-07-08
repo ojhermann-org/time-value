@@ -20,5 +20,17 @@ name = "time-value-mcp"
 path = "src/main.rs"
 
 [dependencies]
+# `std` gives the transcendental math the single-sum / annuity operations need.
+time_value = { workspace = true, features = ["std"] }
+anyhow.workspace = true
+serde_json.workspace = true
+# The MCP transport and its async runtime (ADR-0011). The core library stays
+# synchronous (ADR-0003); async is contained to this crate.
+rmcp.workspace = true
+tokio.workspace = true
+schemars.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
