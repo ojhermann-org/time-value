@@ -28,11 +28,11 @@ Keep a **per-crate MSRV**, and verify the core's:
 - The **dev/build toolchain** (`rust-toolchain.toml`) stays **1.88** — it must
   build the whole workspace, including the MCP crate.
 - **Verify the core MSRV in CI.** A `msrv` flake devShell pins a minimal rustc
-  1.85; the `ci` job runs `nix develop .#msrv -c cargo test -p time_value
-  --all-features` on it. It goes through the flake (so there is no second
-  toolchain source — [ADR-0008](0008-nix-flake-dev-environment.md)) and is a step
-  of the required `ci` job, so a regression **blocks the merge** rather than
-  rotting.
+  1.85; the `ci` job runs `nix develop .#msrv -c cargo build -p time_value
+  --all-features` on it (a **build**, not a test — see the 2026-07-08 amendment
+  below). It goes through the flake (so there is no second toolchain source —
+  [ADR-0008](0008-nix-flake-dev-environment.md)) and is a step of the required
+  `ci` job, so a regression **blocks the merge** rather than rotting.
 
 ## Consequences
 
@@ -56,3 +56,24 @@ Keep a **per-crate MSRV**, and verify the core's:
   workspace sit on 1.85, but fragments the single-workspace/single-lockfile setup
   or pins to a stale SDK; more moving parts for the same result as verifying the
   core directly.
+
+## Amendment (2026-07-08): the MSRV step *builds* the core, it does not *test* it
+
+Adding property tests (`proptest`, a dev-dependency) surfaced a gap in the
+original decision. `cargo test -p time_value` compiles the crate's
+`[dev-dependencies]` and its `#[cfg(test)]` code, so the MSRV step was
+transitively asserting that **the test harness** also builds on 1.85. But
+dev-dependencies are not part of the published crate — they never reach a
+downstream user — so a test framework that needs a newer compiler than 1.85 (as
+`proptest` and its own dependency tree may) has no bearing on the core's MSRV
+promise, yet would have failed the check.
+
+The MSRV step therefore runs **`cargo build -p time_value --all-features`**
+instead of `cargo test`. `build` compiles only the library target — the exact
+code a downstream user compiles — and skips dev-dependencies and `#[cfg(test)]`,
+so the check now asserts precisely the promise it is meant to (the *published*
+core builds on 1.85) and nothing more. The core's unit tests still run, on the
+1.88 workspace toolchain, in the main `Test` step; only the *1.85* verification
+narrows from test to build. The shared-lockfile risk above is unchanged — it
+concerns *core* runtime dependencies (`serde`/`libm`), which `build` still
+compiles.

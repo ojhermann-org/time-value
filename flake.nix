@@ -92,7 +92,8 @@
 
           # A minimal 1.85 toolchain to verify the core library's MSRV
           # (docs/adr/0017-per-crate-msrv-core-1.85.md). The workspace builds on
-          # 1.88 (rust-toolchain.toml); only `cargo test -p time_value` runs here.
+          # 1.88 (rust-toolchain.toml); only `cargo build -p time_value` runs here
+          # (a build, not a test, so dev-deps like proptest don't gate the MSRV).
           msrv = pkgs.mkShell {
             packages = [
               pkgs.rust-bin.stable."1.85.0".minimal
