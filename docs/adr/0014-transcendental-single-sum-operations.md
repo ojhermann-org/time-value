@@ -1,6 +1,6 @@
 # ADR-0014: Transcendental operations behind `std` / `libm` — single-sum value
 
-- **Status:** Accepted
+- **Status:** Accepted (single-sum functions moved from the crate root into a `single_sum` module for 1.0 — [ADR-0019](0019-1.0-public-api-decisions.md))
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 

@@ -24,14 +24,10 @@ default = []
 # Pull in `std` (transcendental math, `std::error::Error` blanket impls where
 # cheaper than the `core` equivalents).
 std = []
-# `no_std` transcendental functions (`powf`/`ln`/`exp`) via `libm`, needed for
-# IRR and continuous compounding without `std` (ADR-0009).
+# `no_std` transcendental math (`powf`) via `libm`, so the single-sum and annuity
+# operations work without `std` (ADR-0009). The default build (NPV/NFV/IRR) is
+# arithmetic-only and needs neither `std` nor `libm`.
 libm = ["dep:libm"]
-# Derive `serde` on the domain newtypes so the CLI/MCP surfaces can (de)serialise
-# them (ADR-0005). Off by default; the core does not require `serde`.
-serde = ["dep:serde"]
 
 [dependencies]
 libm = { workspace = true, optional = true }
-# `default-features`/`derive` come from the workspace entry (both `no_std`-safe).
-serde = { workspace = true, optional = true }

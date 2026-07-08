@@ -13,9 +13,7 @@ use rmcp::{
     model::{CallToolResult, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, ErrorData, ServerHandler,
 };
-use time_value::{
-    annuity, future_value, present_value, Cashflows, Money, Monthly, Period, Rate, TvmError,
-};
+use time_value::{annuity, single_sum, Cashflows, Money, Monthly, Period, Rate, TvmError};
 
 use crate::params::{
     AnnuityPaymentInput, AnnuityValueInput, FutureValueInput, IrrInput, PresentValueInput,
@@ -89,7 +87,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<PresentValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let value = present_value(
+        let value = single_sum::present_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.future)?,
@@ -106,7 +104,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<FutureValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let value = future_value(
+        let value = single_sum::future_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.present)?,

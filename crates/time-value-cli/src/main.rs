@@ -7,7 +7,7 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use time_value::{annuity, future_value, present_value, Cashflows, Money, Monthly, Period, Rate};
+use time_value::{annuity, single_sum, Cashflows, Money, Monthly, Period, Rate};
 
 /// Type-safe time-value-of-money calculations.
 #[derive(Parser)]
@@ -170,7 +170,7 @@ fn run(cli: Cli) -> Result<()> {
             future,
         } => (
             "pv",
-            present_value(rate(r)?, period(n)?, money(future)?).value(),
+            single_sum::present_value(rate(r)?, period(n)?, money(future)?).value(),
         ),
         Command::Fv {
             rate: r,
@@ -178,7 +178,7 @@ fn run(cli: Cli) -> Result<()> {
             present,
         } => (
             "fv",
-            future_value(rate(r)?, period(n)?, money(present)?).value(),
+            single_sum::future_value(rate(r)?, period(n)?, money(present)?).value(),
         ),
         Command::Annuity { command } => match command {
             AnnuityCommand::Pv {

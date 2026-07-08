@@ -1,4 +1,7 @@
 //! Present and future value of a single amount.
+//!
+//! Both functions compound with `powf`; on extreme rate/period magnitudes the
+//! result can overflow to a non-finite [`Money`](crate::Money) (see its docs).
 
 use crate::math::powf;
 use crate::{Money, Period, Periodicity, Rate};
@@ -14,10 +17,10 @@ use crate::{Money, Period, Periodicity, Rate};
 /// # Examples
 ///
 /// ```
-/// use time_value::{present_value, Money, Monthly, Period, Rate};
+/// use time_value::{single_sum, Money, Monthly, Period, Rate};
 ///
 /// // 1000 a year out, at 1% per month, is worth ~887.45 today.
-/// let pv = present_value(
+/// let pv = single_sum::present_value(
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
 ///     Money::new(1000.0)?,
@@ -40,10 +43,10 @@ pub fn present_value<P: Periodicity>(rate: Rate<P>, periods: Period, future: Mon
 /// # Examples
 ///
 /// ```
-/// use time_value::{future_value, Money, Monthly, Period, Rate};
+/// use time_value::{single_sum, Money, Monthly, Period, Rate};
 ///
 /// // 1000 today, at 1% per month for a year, grows to ~1126.83.
-/// let fv = future_value(
+/// let fv = single_sum::future_value(
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
 ///     Money::new(1000.0)?,
@@ -59,7 +62,8 @@ pub fn future_value<P: Periodicity>(rate: Rate<P>, periods: Period, present: Mon
 
 #[cfg(test)]
 mod tests {
-    use crate::{future_value, present_value, Money, Monthly, Period, Rate};
+    use super::{future_value, present_value};
+    use crate::{Money, Monthly, Period, Rate};
 
     /// `no_std`-safe approximate equality (no `f64::abs`).
     fn approx(a: f64, b: f64) -> bool {

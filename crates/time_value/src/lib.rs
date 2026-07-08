@@ -12,8 +12,9 @@
 //!
 //! ## Model
 //!
-//! - [`Money`] is a validated (always-finite) monetary amount; cashflows are
-//!   signed (outflow negative, inflow positive).
+//! - [`Money`] is a validated monetary amount — finite on construction (see its
+//!   docs for how the operations treat overflow); cashflows are signed (outflow
+//!   negative, inflow positive).
 //! - [`Rate<P>`] is a per-period interest rate tagged with a [`Periodicity`]
 //!   marker (`P` — e.g. [`Monthly`], [`Annual`]). The tag is zero-sized.
 //! - [`Cashflows<P>`] is a periodicity-tagged series of cashflows at consecutive
@@ -28,9 +29,10 @@
 //!
 //! Operations that require transcendental functions (`powf`) live behind the
 //! optional `std` / `libm` features (see
-//! `docs/adr/0009-no_std-and-optional-libm.md`): the single-sum `present_value`
-//! and `future_value` functions (with the `Period` type) and the `annuity`
-//! operations, plus rate conversions to follow.
+//! `docs/adr/0009-no_std-and-optional-libm.md`): the [`single_sum`] module
+//! ([`present_value`](single_sum::present_value) /
+//! [`future_value`](single_sum::future_value), with the [`Period`] type) and the
+//! [`annuity`] module, plus rate conversions to follow.
 //!
 //! ```
 //! use time_value::{Cashflows, Money, Monthly, Rate};
@@ -77,12 +79,10 @@ mod math;
 #[cfg(any(feature = "std", feature = "libm"))]
 mod period;
 #[cfg(any(feature = "std", feature = "libm"))]
-mod single_sum;
+pub mod single_sum;
 
 #[cfg(any(feature = "std", feature = "libm"))]
 pub use period::Period;
-#[cfg(any(feature = "std", feature = "libm"))]
-pub use single_sum::{future_value, present_value};
 
 use core::fmt;
 

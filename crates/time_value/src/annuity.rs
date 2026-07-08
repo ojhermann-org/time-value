@@ -5,7 +5,9 @@
 //! available with the `std` or `libm` feature, like the single-sum operations
 //! (`docs/adr/0014-transcendental-single-sum-operations.md`), and handle the
 //! `r → 0` limit, where the annuity factors collapse to `n`
-//! (`docs/adr/0015-annuities.md`).
+//! (`docs/adr/0015-annuities.md`). The factors compound with `powf`, so on
+//! extreme rate/period magnitudes a value can overflow to a non-finite
+//! [`Money`](crate::Money) (see its docs).
 
 use crate::math::powf;
 use crate::{Money, Period, Periodicity, Rate, TvmError};

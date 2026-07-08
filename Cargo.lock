@@ -793,7 +793,6 @@ name = "time_value"
 version = "1.0.0"
 dependencies = [
  "libm",
- "serde",
 ]
 
 [[package]]
