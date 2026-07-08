@@ -12,7 +12,7 @@ members = [
 # No shared `version`: each crate carries its own (independent semver, driven by
 # release-plz from Conventional Commits — docs/adr/0012-ci-and-release-automation.md).
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ojhermann-org/time-value"
 

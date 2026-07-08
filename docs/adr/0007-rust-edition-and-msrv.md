@@ -1,6 +1,6 @@
 # ADR-0007: Rust edition & MSRV
 
-- **Status:** Accepted
+- **Status:** Accepted (version numbers amended by [ADR-0016](0016-msrv-and-toolchain-bump.md) — MSRV/toolchain raised to 1.88)
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 
