@@ -1,6 +1,6 @@
 # ADR-0005: Domain modelling & strong typing
 
-- **Status:** Accepted
+- **Status:** Accepted (the planned `serde` derives were dropped for 1.0 — [ADR-0019](0019-1.0-public-api-decisions.md))
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 

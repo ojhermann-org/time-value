@@ -56,7 +56,6 @@ let irr = project.internal_rate_of_return()?;  // ≈ 0.1307 per month
 |---------|:-------:|--------|
 | `std`   |    no   | Use `std` for the transcendental math (`f64::powf`). |
 | `libm`  |    no   | Provide that math via [`libm`] instead, so the single-sum and annuity operations work in a `no_std` build. |
-| `serde` |    no   | Derive `Serialize`/`Deserialize` on the domain newtypes. |
 
 [`libm`]: https://crates.io/crates/libm
 

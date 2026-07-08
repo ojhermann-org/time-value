@@ -8,8 +8,13 @@ use crate::TvmError;
 ///
 /// A plain newtype over `f64`; currency is intentionally **not** type-tagged in
 /// the `1.0` line (see `docs/adr/0005-domain-modelling-and-strong-typing.md`).
-/// A `Money` is always finite: the [`new`](Money::new) constructor rejects `NaN`
-/// and the infinities, so downstream code never has to re-check.
+///
+/// The [`new`](Money::new) constructor rejects `NaN` and the infinities, so a
+/// `Money` obtained from `new` is finite. The TVM *operations* (present/future
+/// value, NPV, …) assume finite inputs and do not re-validate their result: with
+/// extreme inputs the underlying `f64` arithmetic can overflow, so the returned
+/// `Money` may be non-finite. Call `money.value().is_finite()` when you feed in
+/// magnitudes that might overflow.
 ///
 /// Cashflows are signed — an outflow is negative, an inflow positive.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]

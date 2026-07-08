@@ -1,6 +1,6 @@
 # ADR-0009: `no_std` core & optional `libm`
 
-- **Status:** Accepted
+- **Status:** Accepted (the `serde` feature was dropped for 1.0, leaving `std`/`libm` — [ADR-0019](0019-1.0-public-api-decisions.md))
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 
