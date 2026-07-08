@@ -29,8 +29,8 @@
 //! Operations that require transcendental functions (`powf`) live behind the
 //! optional `std` / `libm` features (see
 //! `docs/adr/0009-no_std-and-optional-libm.md`): the single-sum `present_value`
-//! and `future_value` functions (with the `Period` type), plus annuities and
-//! rate conversions to follow.
+//! and `future_value` functions (with the `Period` type) and the `annuity`
+//! operations, plus rate conversions to follow.
 //!
 //! ```
 //! use time_value::{Cashflows, Money, Monthly, Rate};
@@ -70,6 +70,8 @@ pub use rate::Rate;
 
 // Operations that need transcendental math (`powf`) are available only with the
 // `std` or `libm` feature (see `docs/adr/0014-transcendental-single-sum-operations.md`).
+#[cfg(any(feature = "std", feature = "libm"))]
+pub mod annuity;
 #[cfg(any(feature = "std", feature = "libm"))]
 mod math;
 #[cfg(any(feature = "std", feature = "libm"))]

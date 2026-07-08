@@ -31,6 +31,7 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0012](0012-ci-and-release-automation.md) | CI and release automation | Accepted |
 | [0013](0013-core-api-values-and-discrete-operations.md) | Core API — values, cashflows & discrete operations | Accepted |
 | [0014](0014-transcendental-single-sum-operations.md) | Transcendental operations behind `std`/`libm` — single-sum value | Accepted |
+| [0015](0015-annuities.md) | Annuities — convention, the `r → 0` limit, and a fallible payment | Accepted |
 
 ### Planned
 
