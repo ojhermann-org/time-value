@@ -80,6 +80,10 @@ Zellij layout wires it into a dedicated pane:
 zellij --layout .zellij/layout.kdl
 ```
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full check gate, the commit and
+branch conventions, and how to add an operation across the library, CLI, and MCP
+server.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
