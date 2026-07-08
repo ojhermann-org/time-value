@@ -1,30 +1,57 @@
 name: CI
 
+# Every check runs through the Nix flake (`nix develop -c cargo …`) so CI uses
+# the exact toolchain, cargo-nextest, and cargo-deny the flake pins — one source
+# of truth with local dev (docs/adr/0012-ci-and-release-automation.md).
+
 on:
+  push:
+    branches: [main]
   pull_request:
 
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  flake-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: DeterminateSystems/nix-installer-action@v21
-
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
-
-      # Runs every flake check on this system: crane build/clippy/test/doc/fmt
-      # plus the git-hooks pre-commit hooks. Single source of truth with local dev.
-      - name: nix flake check
-        run: nix flake check --print-build-logs
-
+  # NOTE: the job id `ci` is the required status check enforced by the org
+  # ruleset — do not rename it or set a custom `name:` (which would change the
+  # surfaced check name) and do not remove it (see CLAUDE.md).
   ci:
-    needs: [flake-check]
     runs-on: ubuntu-latest
-    if: always()
     steps:
-      - name: Check all jobs passed
-        run: |
-          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" || "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
-            exit 1
-          fi
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v21
+
+      - name: Nix store cache
+        uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - name: Cargo registry & build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Format
+        run: nix develop -c cargo fmt --all -- --check
+
+      - name: Clippy
+        run: nix develop -c cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: nix develop -c cargo nextest run --workspace
+
+      - name: Licences & advisories
+        run: nix develop -c cargo deny check

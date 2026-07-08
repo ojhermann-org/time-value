@@ -1,0 +1,29 @@
+# cargo-deny configuration (docs/adr/0012-ci-and-release-automation.md).
+#
+# The dependency tree is small and offline-only. The main things we assert are
+# license compatibility with our dual MIT-OR-Apache-2.0 license and no known
+# advisories. Run in CI as `nix develop -c cargo deny check`.
+
+[licenses]
+# Our own crates are `MIT OR Apache-2.0`; dependencies must carry a permissive
+# license compatible with redistributing under either.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "Unlicense",
+]
+confidence-threshold = 0.9
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[bans]
+# Flag (don't fail on) duplicate versions of a crate in the tree.
+multiple-versions = "warn"
