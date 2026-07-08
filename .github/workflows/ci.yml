@@ -47,11 +47,23 @@ jobs:
       - name: Format
         run: nix develop -c cargo fmt --all -- --check
 
-      - name: Clippy
+      # Default features build the `no_std`, zero-dependency core — this is the
+      # step that catches an accidental `std` dependency in the core.
+      - name: Clippy (default features)
+        run: nix develop -c cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Clippy (all features)
         run: nix develop -c cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      # `--all-features` so feature-gated operations (and their tests) are
+      # exercised, not just compiled.
       - name: Test
-        run: nix develop -c cargo nextest run --workspace
+        run: nix develop -c cargo nextest run --workspace --all-features
+
+      # nextest does not run doctests; run them explicitly (they include the
+      # `compile_fail` doctests that prove the periodicity mismatch is rejected).
+      - name: Doctests
+        run: nix develop -c cargo test --doc --workspace --all-features
 
       - name: Licences & advisories
         run: nix develop -c cargo deny check
