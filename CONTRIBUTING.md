@@ -71,7 +71,7 @@ it makes sense) the CLI subcommand and the MCP tool:
   `core`. Transcendental math goes through the `std`/`libm`-gated `math` module
   ([ADR-0009](docs/adr/0009-no_std-and-optional-libm.md),
   [ADR-0014](docs/adr/0014-transcendental-single-sum-operations.md)).
-- **`time_value-cli` / `time_value-mcp` (binaries)** — mirror the library op as a
+- **`time-value-cli` / `time-value-mcp` (binaries)** — mirror the library op as a
   subcommand ([ADR-0010](docs/adr/0010-cli-surface.md)) or a tool
   ([ADR-0011](docs/adr/0011-mcp-server.md)), with `assert_cmd` integration tests
   that drive the compiled binary. Async stays contained to `-mcp`

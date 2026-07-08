@@ -12,8 +12,8 @@ errors*, while keeping the common path ergonomic.
 | Crate | Kind | Description |
 |-------|------|-------------|
 | [`time_value`](crates/time_value) | library (`no_std`) | The TVM calculations. Published on crates.io. |
-| [`time_value-cli`](crates/time_value-cli) | binary `time-value` | Command-line interface over the library. |
-| [`time_value-mcp`](crates/time_value-mcp) | binary `time-value-mcp` | MCP server exposing the calculations as tools. |
+| [`time-value-cli`](crates/time-value-cli) | binary `time-value` | Command-line interface over the library. |
+| [`time-value-mcp`](crates/time-value-mcp) | binary `time-value-mcp` | MCP server exposing the calculations as tools. |
 
 Dependencies point one way, toward the library; the binaries depend on
 `time_value` by workspace path (see [ADR-0002](docs/adr/0002-workspace-layout.md)).
@@ -32,14 +32,14 @@ let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?); // ≈ 18.22
 let irr = project.internal_rate_of_return()?;                     // ≈ 0.1307
 ```
 
-From the shell ([`time-value` CLI](crates/time_value-cli)):
+From the shell ([`time-value` CLI](crates/time-value-cli)):
 
 ```sh
 time-value npv --rate 0.01 -100 60 60   # 18.2237…
 time-value irr -100 60 60               # 0.1307… per period
 ```
 
-The [`time-value-mcp` server](crates/time_value-mcp) exposes the same operations
+The [`time-value-mcp` server](crates/time-value-mcp) exposes the same operations
 as MCP tools for assistants.
 
 ## Development

@@ -11,8 +11,8 @@ The repo is a **Cargo workspace** (see `docs/adr/0002-workspace-layout.md`) of
 three crates:
 
 - `crates/time_value` — the `no_std` core library (the published crate).
-- `crates/time_value-cli` — the `time-value` CLI binary.
-- `crates/time_value-mcp` — the `time-value-mcp` MCP server binary.
+- `crates/time-value-cli` — the `time-value` CLI binary.
+- `crates/time-value-mcp` — the `time-value-mcp` MCP server binary.
 
 Dependencies point one way, toward the library; the binaries depend on
 `time_value` by workspace path. Async is contained to `-mcp`; the core stays
@@ -82,8 +82,8 @@ Cargo.toml                # [workspace]: members, shared package/deps/lints
 deny.toml                 # cargo-deny: licenses + advisories + bans
 crates/
   time_value/             # core library (no_std) — the published crate
-  time_value-cli/          # binary `time-value`
-  time_value-mcp/          # binary `time-value-mcp`
+  time-value-cli/          # binary `time-value`
+  time-value-mcp/          # binary `time-value-mcp`
 docs/adr/                 # architecture decision records
 bacon.toml                # bacon jobs (default: clippy)
 .zellij/layout.kdl        # project Zellij layout with a bacon pane

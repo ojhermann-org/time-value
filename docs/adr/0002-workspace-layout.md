@@ -1,6 +1,6 @@
 # ADR-0002: Workspace layout & crate boundaries
 
-- **Status:** Accepted
+- **Status:** Accepted (binary-crate naming amended by [ADR-0018](0018-kebab-case-binary-crate-names.md) — the binary crates are `time-value-cli` / `time-value-mcp`; the layout and boundaries below stand)
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 

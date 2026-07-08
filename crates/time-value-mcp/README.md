@@ -1,4 +1,4 @@
-# time_value-mcp
+# time-value-mcp
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server exposing
 [`time_value`](../time_value)'s time-value-of-money calculations as tools over
@@ -24,7 +24,7 @@ Not yet published to crates.io (see [ADR-0012](../../docs/adr/0012-ci-and-releas
 From a checkout of the repository:
 
 ```sh
-cargo install --path crates/time_value-mcp   # installs the `time-value-mcp` binary
+cargo install --path crates/time-value-mcp   # installs the `time-value-mcp` binary
 ```
 
 ## Running

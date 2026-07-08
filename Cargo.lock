@@ -762,15 +762,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "time_value"
-version = "1.0.0"
-dependencies = [
- "libm",
- "serde",
-]
-
-[[package]]
-name = "time_value-cli"
+name = "time-value-cli"
 version = "0.0.0"
 dependencies = [
  "anyhow",
@@ -782,7 +774,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "time_value-mcp"
+name = "time-value-mcp"
 version = "0.0.0"
 dependencies = [
  "anyhow",
@@ -794,6 +786,14 @@ dependencies = [
  "serde_json",
  "time_value",
  "tokio",
+]
+
+[[package]]
+name = "time_value"
+version = "1.0.0"
+dependencies = [
+ "libm",
+ "serde",
 ]
 
 [[package]]
