@@ -8,17 +8,61 @@
 //! economically meaningless rate — *compile errors* rather than silent
 //! arithmetic, while keeping the common path ergonomic.
 //!
-//! The crate is `#![no_std]` and dependency-free.
+//! The crate is `#![no_std]` and dependency-free by default.
 //!
-//! ## Status
+//! ## Model
 //!
-//! `1.0.0` is under active design. The public API is being built up
-//! incrementally; this is the scaffolding baseline (error type only). The
-//! validated newtypes (`Rate`, `Money`, `Period`), the `Cashflows` core type,
-//! and the periodicity-tagged operations land in subsequent changes.
+//! - [`Money`] is a validated (always-finite) monetary amount; cashflows are
+//!   signed (outflow negative, inflow positive).
+//! - [`Rate<P>`] is a per-period interest rate tagged with a [`Periodicity`]
+//!   marker (`P` — e.g. [`Monthly`], [`Annual`]). The tag is zero-sized.
+//! - [`Cashflows<P>`] is a periodicity-tagged series of cashflows at consecutive
+//!   periods. Discounting a [`Cashflows<P>`] requires a [`Rate<P>`] of the *same*
+//!   periodicity, so a mismatch is a compile error.
+//!
+//! ## Operations
+//!
+//! The discrete operations — [`net_present_value`], [`net_future_value`], and
+//! [`internal_rate_of_return`] — need only elementary arithmetic and are
+//! available in the default `no_std`, zero-dependency build. Operations that
+//! require transcendental functions (single-sum present/future value over a
+//! fractional number of periods, annuities, rate conversions) arrive behind the
+//! optional `std` / `libm` features (see
+//! `docs/adr/0009-no_std-and-optional-libm.md`).
+//!
+//! ```
+//! use time_value::{Cashflows, Money, Monthly, Rate};
+//!
+//! // A project: pay 100 now, receive 60 next month and 60 the month after.
+//! let flows = [Money::new(-100.0)?, Money::new(60.0)?, Money::new(60.0)?];
+//! let project = Cashflows::<Monthly>::new(&flows);
+//!
+//! let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?);
+//! assert!(npv.value() > 0.0); // worth doing at 1%/month
+//!
+//! let irr = project.internal_rate_of_return()?;
+//! assert!((irr.value() - 0.1307).abs() < 1e-4); // ~13.07% per month
+//! # Ok::<(), time_value::TvmError>(())
+//! ```
+//!
+//! [`Cashflows<P>`]: Cashflows
+//! [`Rate<P>`]: Rate
+//! [`net_present_value`]: Cashflows::net_present_value
+//! [`net_future_value`]: Cashflows::net_future_value
+//! [`internal_rate_of_return`]: Cashflows::internal_rate_of_return
 
 #![no_std]
 #![forbid(unsafe_code)]
+
+mod cashflows;
+mod money;
+mod periodicity;
+mod rate;
+
+pub use cashflows::Cashflows;
+pub use money::Money;
+pub use periodicity::{Annual, Daily, Monthly, Periodicity, Quarterly, SemiAnnual, Weekly};
+pub use rate::Rate;
 
 use core::fmt;
 
@@ -26,27 +70,30 @@ use core::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum TvmError {
-    /// A rate was less than or equal to `-1.0` (i.e. ≤ −100%), which is
-    /// economically meaningless for discounting and compounding.
+    /// A rate was not finite, or was less than or equal to `-1.0` (i.e. ≤ −100%),
+    /// which is economically meaningless for discounting and compounding.
     RateOutOfRange,
+    /// A monetary amount was not finite (`NaN` or an infinity).
+    NonFiniteAmount,
+    /// An operation that requires at least one cashflow was given an empty
+    /// series (e.g. [`Cashflows::internal_rate_of_return`]).
+    EmptyCashflows,
+    /// [`Cashflows::internal_rate_of_return`] did not converge to a root within
+    /// its iteration budget, or the iteration left the valid rate domain.
+    IrrDidNotConverge,
 }
 
 impl fmt::Display for TvmError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Self::RateOutOfRange => f.write_str("rate must be greater than -1.0 (-100%)"),
+            Self::RateOutOfRange => {
+                f.write_str("rate must be finite and greater than -1.0 (-100%)")
+            }
+            Self::NonFiniteAmount => f.write_str("monetary amount must be finite"),
+            Self::EmptyCashflows => f.write_str("cashflow series is empty"),
+            Self::IrrDidNotConverge => f.write_str("internal rate of return did not converge"),
         }
     }
 }
 
 impl core::error::Error for TvmError {}
-
-#[cfg(test)]
-mod tests {
-    use super::TvmError;
-
-    #[test]
-    fn error_variant_is_comparable() {
-        assert_eq!(TvmError::RateOutOfRange, TvmError::RateOutOfRange);
-    }
-}

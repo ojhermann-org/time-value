@@ -29,6 +29,7 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0008](0008-nix-flake-dev-environment.md) | Nix flake dev environment | Accepted |
 | [0009](0009-no_std-and-optional-libm.md) | `no_std` core & optional `libm` | Accepted |
 | [0012](0012-ci-and-release-automation.md) | CI and release automation | Accepted |
+| [0013](0013-core-api-values-and-discrete-operations.md) | Core API — values, cashflows & discrete operations | Accepted |
 
 ### Planned
 
