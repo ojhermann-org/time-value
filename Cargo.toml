@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "crates/time_value",
-    "crates/time_value-cli",
-    "crates/time_value-mcp",
+    "crates/time-value-cli",
+    "crates/time-value-mcp",
 ]
 
 # Shared metadata, dependency versions, and lints, inherited by member crates via

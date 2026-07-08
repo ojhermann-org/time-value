@@ -1,4 +1,4 @@
-# time_value-mcp
+# time-value-mcp
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server exposing
 [`time_value`](../time_value)'s time-value-of-money calculations as tools over
@@ -17,6 +17,15 @@ the core library stays synchronous.
 
 Rates are per period; cashflows are signed (outflow negative). Each tool returns
 a one-field structured JSON result keyed by the operation.
+
+## Install
+
+Not yet published to crates.io (see [ADR-0012](../../docs/adr/0012-ci-and-release-automation.md)).
+From a checkout of the repository:
+
+```sh
+cargo install --path crates/time-value-mcp   # installs the `time-value-mcp` binary
+```
 
 ## Running
 

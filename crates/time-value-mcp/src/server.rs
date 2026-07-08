@@ -173,9 +173,9 @@ impl ServerHandler for TimeValueServer {
         let mut info = ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(INSTRUCTIONS);
         // `ServerInfo::new` fills `server_info` from the rmcp crate's build env;
-        // identify ourselves instead. The name is the binary/product name
-        // (`CARGO_PKG_NAME` is the package `time_value-mcp`, with an underscore).
-        info.server_info.name = "time-value-mcp".to_string();
+        // identify ourselves with this crate's own name/version instead. The
+        // package name (`time-value-mcp`) is the product/binary name.
+        info.server_info.name = env!("CARGO_PKG_NAME").to_string();
         info.server_info.version = env!("CARGO_PKG_VERSION").to_string();
         info
     }

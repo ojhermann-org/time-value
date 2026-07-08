@@ -1,8 +1,17 @@
-# time_value-cli
+# time-value-cli
 
 The command-line interface for [`time_value`](../time_value) — type-safe
 time-value-of-money calculations from your shell. Installs the `time-value`
 binary. Its surface is designed in [ADR-0010](../../docs/adr/0010-cli-surface.md).
+
+## Install
+
+Not yet published to crates.io (see [ADR-0012](../../docs/adr/0012-ci-and-release-automation.md)).
+From a checkout of the repository:
+
+```sh
+cargo install --path crates/time-value-cli   # installs the `time-value` binary
+```
 
 ## Usage
 

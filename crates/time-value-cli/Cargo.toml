@@ -1,5 +1,5 @@
 [package]
-name = "time_value-cli"
+name = "time-value-cli"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -16,7 +16,7 @@ publish = false
 [lints]
 workspace = true
 
-# The crate is `time_value-cli` (the crate name `time_value` is the library);
+# The crate is `time-value-cli` (the crate name `time_value` is the library);
 # the installed binary is `time-value` (ADR-0010).
 [[bin]]
 name = "time-value"

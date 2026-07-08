@@ -1,5 +1,5 @@
 [package]
-name = "time_value-mcp"
+name = "time-value-mcp"
 version = "0.0.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,7 +9,7 @@ description = "Model Context Protocol server exposing time_value's time-value-of
 readme = "README.md"
 keywords = ["finance", "tvm", "mcp", "npv", "irr"]
 categories = ["finance"]
-# Not published yet — see time_value-cli (ADR-0012).
+# Not published yet — see time-value-cli (ADR-0012).
 publish = false
 
 [lints]

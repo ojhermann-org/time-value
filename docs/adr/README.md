@@ -20,7 +20,7 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | # | Title | Status |
 |---|-------|--------|
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
-| [0002](0002-workspace-layout.md) | Workspace layout & crate boundaries | Accepted |
+| [0002](0002-workspace-layout.md) | Workspace layout & crate boundaries | Accepted (amended by 0018) |
 | [0003](0003-synchronous-computation-model.md) | Synchronous computation model | Accepted |
 | [0004](0004-error-handling.md) | Error handling | Accepted |
 | [0005](0005-domain-modelling-and-strong-typing.md) | Domain modelling & strong typing | Accepted |
@@ -36,3 +36,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0015](0015-annuities.md) | Annuities — convention, the `r → 0` limit, and a fallible payment | Accepted |
 | [0016](0016-msrv-and-toolchain-bump.md) | Toolchain & MSRV bump to 1.88 for the MCP server | Accepted (amended by 0017) |
 | [0017](0017-per-crate-msrv-core-1.85.md) | Per-crate MSRV — the core keeps 1.85, verified separately | Accepted |
+| [0018](0018-kebab-case-binary-crate-names.md) | Kebab-case binary crate names | Accepted |
