@@ -80,6 +80,7 @@ flake.nix                 # devShell (toolchain + tools) + git-hooks
 rust-toolchain.toml       # pinned toolchain (oxalica/rust-overlay reads this)
 Cargo.toml                # [workspace]: members, shared package/deps/lints
 deny.toml                 # cargo-deny: licenses + advisories + bans
+release-plz.toml          # release-plz: versions/changelogs/tags/GH releases
 crates/
   time_value/             # core library (no_std) — the published crate
   time-value-cli/          # binary `time-value`
@@ -88,7 +89,10 @@ docs/adr/                 # architecture decision records
 bacon.toml                # bacon jobs (default: clippy)
 .zellij/layout.kdl        # project Zellij layout with a bacon pane
 .helix/languages.toml     # Helix: rust (clippy check) + nix (nixfmt)
-.github/workflows/ci.yml  # CI: nix develop -c cargo fmt/clippy/nextest/deny
+.github/workflows/
+  ci.yml                  # CI: nix develop -c cargo fmt/clippy/nextest/deny
+  release-plz.yml         # versions + changelogs + tags + GitHub releases
+  publish.yml             # tag-triggered `cargo publish` (crates.io OIDC)
 ```
 
 ## CI / release
@@ -96,12 +100,15 @@ bacon.toml                # bacon jobs (default: clippy)
 - CI runs `nix develop -c cargo fmt/clippy/nextest/deny` on pushes to `main` and
   on PRs (one `ci` job). The job id `ci` is the required status check enforced by
   the org ruleset — **do not rename it, set a custom `name:`, or remove it**.
-- Release (planned, not yet wired): `release-plz` drives per-crate versions,
-  changelogs, tags, and GitHub releases from Conventional Commits; a
-  tag-triggered workflow then `cargo publish`es via crates.io OIDC trusted
-  publishing (no token secret). `time_value` (core) publishes first; the `-cli`
-  and `-mcp` crates carry `publish = false` until their surfaces stabilise. Old
-  versions `0.1.0`–`0.8.0` remain published+immutable on crates.io.
+- Release: `release-plz.yml` drives per-crate versions, changelogs, tags, and
+  GitHub releases from Conventional Commits (`release-plz.toml`, `publish =
+  false`); `publish.yml` then `cargo publish`es `time_value` via crates.io OIDC
+  trusted publishing (no token secret) on the `time_value-v*` tag. `time_value`
+  (core) publishes first; `-cli`/`-mcp` carry `publish = false` until their
+  surfaces stabilise. Old versions `0.1.0`–`0.8.0` remain published+immutable.
+  **Owner-side setup is required before the automation works** — enable Actions
+  read/write + "allow Actions to create PRs", and register a crates.io Trusted
+  Publisher for `time_value` (see the workflow-file header comments).
 
 ## Deletion & creation
 
