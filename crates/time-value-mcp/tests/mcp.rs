@@ -60,6 +60,24 @@ fn irr_tool_solves_the_series() {
 }
 
 #[test]
+fn an_overflowing_result_is_an_error_not_null() {
+    // Previously this returned `{"future_value":null}` with isError:false — a
+    // silent non-answer. Now it is a proper error (ADR-0021).
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"future_value","arguments":{"rate":1,"periods":2000,"present":1000000}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success() // the process exits cleanly; the error is in the JSON-RPC response
+        .stdout(predicate::str::contains("finite"))
+        .stdout(predicate::str::contains("\"future_value\":null").not());
+}
+
+#[test]
 fn an_invalid_rate_is_an_error() {
     let calls = concat!(
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"npv","arguments":{"rate":-1.5,"cashflows":[-100,60]}}}"#,

@@ -24,7 +24,7 @@ use crate::{Money, Periodicity, Rate, TvmError};
 /// let series = Cashflows::<Monthly>::new(&flows);
 /// let rate = Rate::<Monthly>::new(0.01)?;
 ///
-/// let npv = series.net_present_value(rate);
+/// let npv = series.net_present_value(rate)?;
 /// assert!((npv.value() - 18.2237).abs() < 1e-3);
 /// # Ok::<(), time_value::TvmError>(())
 /// ```
@@ -77,32 +77,44 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     ///
     /// `NPV = Σₜ CFₜ / (1 + r)ᵗ`, evaluated with only elementary arithmetic (no
     /// transcendental functions), so it is available in the default `no_std`,
-    /// dependency-free build.
-    #[must_use]
-    pub fn net_present_value(self, rate: Rate<P>) -> Money {
+    /// dependency-free build. An **empty** series has value `0` (nothing to
+    /// discount).
+    ///
+    /// Evaluated by Horner's method from the last cashflow — `CF₀ + d(CF₁ + d(CF₂ + …))`
+    /// with `d = 1/(1+r)` — which keeps every partial bounded by the cashflow
+    /// magnitudes.
+    ///
+    /// # Errors
+    ///
+    /// [`TvmError::NonFiniteResult`] if the sum overflows to a non-finite value,
+    /// which needs cashflows near `f64::MAX` or a rate a hair above `−100%`
+    /// (ADR-0021).
+    pub fn net_present_value(self, rate: Rate<P>) -> Result<Money, TvmError> {
         let discount = 1.0 / (1.0 + rate.value());
-        let mut factor = 1.0; // discountᵗ
         let mut acc = 0.0;
-        for cf in self.flows {
-            acc += cf.value() * factor;
-            factor *= discount;
+        for cf in self.flows.iter().rev() {
+            acc = acc * discount + cf.value();
         }
-        Money::from_finite(acc)
+        Money::from_operation(acc)
     }
 
     /// The net future value of the series at its final period, compounded at
     /// `rate`.
     ///
     /// `NFV = Σₜ CFₜ (1 + r)ⁿ⁻¹⁻ᵗ` for a series of `n` cashflows, evaluated by
-    /// Horner's method — again arithmetic-only. An empty series has value `0`.
-    #[must_use]
-    pub fn net_future_value(self, rate: Rate<P>) -> Money {
+    /// Horner's method — again arithmetic-only. An **empty** series has value `0`.
+    ///
+    /// # Errors
+    ///
+    /// [`TvmError::NonFiniteResult`] if the compounded sum overflows to a
+    /// non-finite value (ADR-0021).
+    pub fn net_future_value(self, rate: Rate<P>) -> Result<Money, TvmError> {
         let growth = 1.0 + rate.value();
         let mut acc = 0.0;
         for cf in self.flows {
             acc = acc * growth + cf.value();
         }
-        Money::from_finite(acc)
+        Money::from_operation(acc)
     }
 
     /// The internal rate of return: the [`Rate<P>`] at which the series' net
@@ -138,19 +150,43 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
         if self.flows.is_empty() {
             return Err(TvmError::EmptyCashflows);
         }
-        match self.newton(guess).or_else(|| self.bracket_and_bisect()) {
+        let tolerance = self.npv_tolerance();
+        match self
+            .newton(guess, tolerance)
+            .or_else(|| self.bracket_and_bisect(tolerance))
+        {
             Some(rate) => Rate::new(rate),
             None => Err(TvmError::IrrDidNotConverge),
         }
+    }
+
+    /// The NPV convergence tolerance, scaled by the cashflow magnitudes.
+    ///
+    /// An absolute tolerance (the old `1e-9`) is unreachable for a series measured
+    /// in millions, so a well-formed problem would fail with `IrrDidNotConverge`.
+    /// Scaling by `Σ|CFₜ|` — an upper bound on `|NPV|` — makes the check relative
+    /// to the problem's scale, with a floor of `1` so a tiny series keeps a sane
+    /// absolute tolerance (ADR-0021).
+    fn npv_tolerance(self) -> f64 {
+        const RELATIVE: f64 = 1e-9;
+        let mut scale = 0.0;
+        for cf in self.flows {
+            scale += abs(cf.value());
+        }
+        // Guard the degenerate/overflow case: a non-finite scale would make the
+        // tolerance infinite (accepting anything), so fall back to the floor.
+        if !scale.is_finite() || scale < 1.0 {
+            scale = 1.0;
+        }
+        RELATIVE * scale
     }
 
     /// Newton–Raphson from `guess`. `None` if it does not reach a root within its
     /// iteration budget, the derivative goes flat, or an iterate leaves the valid
     /// domain (a rate ≤ −100%, or a non-finite value — `is_finite` also rejects
     /// `NaN`, so a diverging iterate fails cleanly rather than looping).
-    fn newton(self, guess: f64) -> Option<f64> {
+    fn newton(self, guess: f64, tolerance: f64) -> Option<f64> {
         const MAX_ITERATIONS: u32 = 128;
-        const NPV_TOLERANCE: f64 = 1e-9;
         const MIN_DERIVATIVE: f64 = 1e-12;
 
         let mut rate = guess;
@@ -159,7 +195,7 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
                 return None;
             }
             let (npv, derivative) = self.npv_and_derivative(rate);
-            if within(npv, NPV_TOLERANCE) {
+            if within(npv, tolerance) {
                 return Some(rate);
             }
             if within(derivative, MIN_DERIVATIVE) {
@@ -174,8 +210,7 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     /// bisect the first bracket found. `None` if the NPV never changes sign (no
     /// real IRR). Samples `1 + r` geometrically from just above `0` upward, a
     /// ratio fine enough not to step over a lone root of a conventional series.
-    fn bracket_and_bisect(self) -> Option<f64> {
-        const NPV_TOLERANCE: f64 = 1e-9;
+    fn bracket_and_bisect(self, tolerance: f64) -> Option<f64> {
         const MAX_BISECTIONS: u32 = 200;
         const START: f64 = 1e-4; // 1 + r, i.e. r = -0.9999
         const RATIO: f64 = 1.25;
@@ -185,7 +220,7 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
         let mut f_lo = self.npv_at(lo);
         let mut growth = START;
         for _ in 0..SAMPLES {
-            if within(f_lo, NPV_TOLERANCE) {
+            if within(f_lo, tolerance) {
                 return Some(lo);
             }
             growth *= RATIO;
@@ -197,7 +232,7 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
                     lo,
                     hi,
                     f_lo,
-                    NPV_TOLERANCE,
+                    tolerance,
                     MAX_BISECTIONS,
                 ));
             }
@@ -273,6 +308,15 @@ fn within(x: f64, tolerance: f64) -> bool {
     x < tolerance && x > -tolerance
 }
 
+/// `|x|`, without `f64::abs` (which is not in `core`).
+fn abs(x: f64) -> f64 {
+    if x < 0.0 {
+        -x
+    } else {
+        x
+    }
+}
+
 /// Whether `a` and `b` are both non-zero and of opposite sign.
 fn opposite_signs(a: f64, b: f64) -> bool {
     (a < 0.0 && b > 0.0) || (a > 0.0 && b < 0.0)
@@ -303,7 +347,10 @@ mod tests {
         let series = Cashflows::<Monthly>::new(&flows);
         let rate = Rate::<Monthly>::new(0.01).unwrap();
         let expected = -100.0 + 60.0 / 1.01 + 60.0 / (1.01 * 1.01);
-        assert!(approx(series.net_present_value(rate).value(), expected));
+        assert!(approx(
+            series.net_present_value(rate).unwrap().value(),
+            expected
+        ));
     }
 
     #[test]
@@ -311,7 +358,10 @@ mod tests {
         let flows = money(&[-100.0, 60.0, 60.0]);
         let series = Cashflows::<Monthly>::new(&flows);
         let rate = Rate::<Monthly>::new(0.0).unwrap();
-        assert!(approx(series.net_present_value(rate).value(), 20.0));
+        assert!(approx(
+            series.net_present_value(rate).unwrap().value(),
+            20.0
+        ));
     }
 
     #[test]
@@ -319,8 +369,8 @@ mod tests {
         let flows = money(&[-100.0, 60.0, 60.0]);
         let series = Cashflows::<Monthly>::new(&flows);
         let rate = Rate::<Monthly>::new(0.01).unwrap();
-        let present = series.net_present_value(rate).value();
-        let future = series.net_future_value(rate).value();
+        let present = series.net_present_value(rate).unwrap().value();
+        let future = series.net_future_value(rate).unwrap().value();
         // NFV = NPV * (1 + r)^(n - 1); here n = 3.
         assert!(approx(future, present * 1.01 * 1.01));
     }
@@ -331,7 +381,7 @@ mod tests {
         let series = Cashflows::<Monthly>::new(&flows);
         let irr = series.internal_rate_of_return().unwrap();
         // Discounting at the IRR gives (approximately) zero NPV.
-        assert!(within(series.net_present_value(irr).value(), 1e-6));
+        assert!(within(series.net_present_value(irr).unwrap().value(), 1e-6));
         // Closed form: 3x^2 + 3x - 5 = 0, x = 1/(1+r), x = (-3 + sqrt(69))/6,
         // giving r = 0.130662386…
         assert!(approx(irr.value(), 0.130_662_386));
@@ -365,7 +415,7 @@ mod tests {
         let flows = money(&[-100.0, 60.0, 60.0]);
         let series = Cashflows::<Monthly>::new(&flows);
         let irr = series.internal_rate_of_return_from(1e6).unwrap();
-        assert!(within(series.net_present_value(irr).value(), 1e-6));
+        assert!(within(series.net_present_value(irr).unwrap().value(), 1e-6));
         assert!(approx(irr.value(), 0.130_662_386));
     }
 
@@ -376,8 +426,46 @@ mod tests {
         let flows = money(&[-1.0, 2.0, 0.0]);
         let series = Cashflows::<Monthly>::new(&flows);
         let irr = series.internal_rate_of_return().unwrap();
-        assert!(within(series.net_present_value(irr).value(), 1e-6));
+        assert!(within(series.net_present_value(irr).unwrap().value(), 1e-6));
         assert!(approx(irr.value(), 1.0));
+    }
+
+    #[test]
+    fn npv_and_nfv_of_an_empty_series_are_zero() {
+        // Convention (ADR-0021): nothing to discount or compound is `Ok(0)`.
+        let empty: [Money; 0] = [];
+        let series = Cashflows::<Monthly>::new(&empty);
+        let rate = Rate::<Monthly>::new(0.05).unwrap();
+        assert_eq!(series.net_present_value(rate).unwrap(), Money::ZERO);
+        assert_eq!(series.net_future_value(rate).unwrap(), Money::ZERO);
+    }
+
+    #[test]
+    fn npv_and_nfv_overflow_to_a_non_finite_result() {
+        // Two near-max cashflows sum past `f64::MAX`, so both discounted and
+        // compounded totals overflow — surfaced as an error, not a silent `inf`.
+        let big = [Money::new(f64::MAX).unwrap(), Money::new(f64::MAX).unwrap()];
+        let series = Cashflows::<Monthly>::new(&big);
+        let rate = Rate::<Monthly>::new(0.0).unwrap();
+        assert_eq!(
+            series.net_present_value(rate),
+            Err(TvmError::NonFiniteResult)
+        );
+        assert_eq!(
+            series.net_future_value(rate),
+            Err(TvmError::NonFiniteResult)
+        );
+    }
+
+    #[test]
+    fn irr_converges_for_large_magnitude_cashflows() {
+        // Millions-scale: an absolute NPV tolerance would be unreachable, but the
+        // magnitude-scaled tolerance (ADR-0021) converges to the same rate as the
+        // unit-scale version of this series (irr_zeroes_the_npv).
+        let flows = money(&[-1_000_000.0, 600_000.0, 600_000.0]);
+        let series = Cashflows::<Monthly>::new(&flows);
+        let irr = series.internal_rate_of_return().unwrap();
+        assert!(approx(irr.value(), 0.130_662_386));
     }
 
     #[test]

@@ -143,7 +143,7 @@ fn run(cli: Cli) -> Result<()> {
         } => {
             let flows = cashflows(&cf)?;
             let series = Cashflows::<Per>::new(&flows);
-            ("npv", series.net_present_value(rate(r)?).value())
+            ("npv", series.net_present_value(rate(r)?)?.value())
         }
         Command::Nfv {
             rate: r,
@@ -151,7 +151,7 @@ fn run(cli: Cli) -> Result<()> {
         } => {
             let flows = cashflows(&cf)?;
             let series = Cashflows::<Per>::new(&flows);
-            ("nfv", series.net_future_value(rate(r)?).value())
+            ("nfv", series.net_future_value(rate(r)?)?.value())
         }
         Command::Irr {
             guess,
@@ -170,7 +170,7 @@ fn run(cli: Cli) -> Result<()> {
             future,
         } => (
             "pv",
-            single_sum::present_value(rate(r)?, period(n)?, money(future)?).value(),
+            single_sum::present_value(rate(r)?, period(n)?, money(future)?)?.value(),
         ),
         Command::Fv {
             rate: r,
@@ -178,7 +178,7 @@ fn run(cli: Cli) -> Result<()> {
             present,
         } => (
             "fv",
-            single_sum::future_value(rate(r)?, period(n)?, money(present)?).value(),
+            single_sum::future_value(rate(r)?, period(n)?, money(present)?)?.value(),
         ),
         Command::Annuity { command } => match command {
             AnnuityCommand::Pv {
@@ -187,7 +187,7 @@ fn run(cli: Cli) -> Result<()> {
                 payment,
             } => (
                 "annuity_pv",
-                annuity::present_value(rate(r)?, period(n)?, money(payment)?).value(),
+                annuity::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
             ),
             AnnuityCommand::Fv {
                 rate: r,
@@ -195,7 +195,7 @@ fn run(cli: Cli) -> Result<()> {
                 payment,
             } => (
                 "annuity_fv",
-                annuity::future_value(rate(r)?, period(n)?, money(payment)?).value(),
+                annuity::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
             ),
             AnnuityCommand::Payment {
                 rate: r,

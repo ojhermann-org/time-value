@@ -125,6 +125,35 @@ fn an_invalid_rate_fails() {
 }
 
 #[test]
+fn an_overflowing_result_fails_instead_of_printing_inf() {
+    // 2^2000 overflows f64; the CLI must error, not print `inf` with exit 0.
+    time_value()
+        .args(["fv", "--rate", "1", "--periods", "2000", "--present", "1e6"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("finite"));
+}
+
+#[test]
+fn an_overflowing_result_fails_in_json_mode_too() {
+    // Previously this printed `{"fv":null}` with exit 0; now it is an error.
+    time_value()
+        .args([
+            "--json",
+            "fv",
+            "--rate",
+            "1",
+            "--periods",
+            "2000",
+            "--present",
+            "1e6",
+        ])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("null").not());
+}
+
+#[test]
 fn a_nonconvergent_irr_fails() {
     // All inflows: NPV is positive for every rate, so there is no IRR.
     time_value()

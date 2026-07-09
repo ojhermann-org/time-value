@@ -34,6 +34,7 @@ proptest! {
         let sum: f64 = amounts.iter().sum();
         let npv = series
             .net_present_value(Rate::<Monthly>::new(0.0).unwrap())
+            .unwrap()
             .value();
         // Up to 16 addends, each |·| ≤ 1e6, so accumulated rounding stays well
         // under this tolerance.
@@ -52,9 +53,11 @@ proptest! {
         let series = Cashflows::<Monthly>::new(&flows);
         let npv_low = series
             .net_present_value(Rate::<Monthly>::new(low).unwrap())
+            .unwrap()
             .value();
         let npv_high = series
             .net_present_value(Rate::<Monthly>::new(low + bump).unwrap())
+            .unwrap()
             .value();
         // Each discounted term shrinks as the rate rises; the undiscounted t=0
         // term is unchanged. A tiny epsilon absorbs rounding.
@@ -77,7 +80,14 @@ proptest! {
         let series = Cashflows::<Monthly>::new(&flows);
 
         let irr = series.internal_rate_of_return().unwrap();
-        prop_assert!(close(series.net_present_value(irr).value(), 0.0, 1e-6));
+        // The solver converges to a magnitude-relative tolerance (ADR-0021), so
+        // the residual NPV is bounded relative to the cashflow scale, not by a
+        // fixed absolute epsilon.
+        prop_assert!(close(
+            series.net_present_value(irr).unwrap().value(),
+            0.0,
+            1e-6 * total
+        ));
     }
 }
 
@@ -97,8 +107,8 @@ proptest! {
         let periods = Period::new(periods).unwrap();
         let amount = Money::new(amount).unwrap();
 
-        let future = single_sum::future_value(rate, periods, amount);
-        let back = single_sum::present_value(rate, periods, future);
+        let future = single_sum::future_value(rate, periods, amount).unwrap();
+        let back = single_sum::present_value(rate, periods, future).unwrap();
         // Round-trips through the same compound factor, so the error is a few
         // ulps of the amount — a relative tolerance keeps it scale-independent.
         prop_assert!(close(back.value(), amount.value(), 1e-6 * amount.value()));
@@ -119,7 +129,7 @@ proptest! {
         let periods = Period::new(periods).unwrap();
         let payment = Money::new(payment).unwrap();
 
-        let present = annuity::present_value(rate, periods, payment);
+        let present = annuity::present_value(rate, periods, payment).unwrap();
         let recovered = annuity::payment(rate, periods, present).unwrap();
         prop_assert!(close(recovered.value(), payment.value(), 1e-6 * payment.value()));
     }

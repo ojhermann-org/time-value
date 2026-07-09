@@ -102,13 +102,21 @@ bacon.toml                # bacon jobs (default: clippy)
   the org ruleset — **do not rename it, set a custom `name:`, or remove it**.
 - Release: `release-plz.yml` drives per-crate versions, changelogs, tags, and
   GitHub releases from Conventional Commits (`release-plz.toml`, `publish =
-  false`); `publish.yml` then `cargo publish`es `time_value` via crates.io OIDC
-  trusted publishing (no token secret) on the `time_value-v*` tag. `time_value`
-  (core) publishes first; `-cli`/`-mcp` carry `publish = false` until their
-  surfaces stabilise. Old versions `0.1.0`–`0.8.0` remain published+immutable.
-  **Owner-side setup is required before the automation works** — enable Actions
-  read/write + "allow Actions to create PRs", and register a crates.io Trusted
-  Publisher for `time_value` (see the workflow-file header comments).
+  false`); `publish.yml` then `cargo publish`es via crates.io OIDC trusted
+  publishing (no token secret) on a version tag. **The first release ships all
+  three crates together at `1.0.0`** — the core is completed and hardened *before*
+  release (fallibility per ADR-0021, Tier-1 completeness), and the CLI/MCP launch
+  with it, rather than the core publishing first with the binaries deferred
+  (**ADR-0022**; tracked by the `1.0.0` milestone + the "Road to 1.0.0" epic #34,
+  with deferred work in the "Post-1.0 backlog" milestone). Old versions
+  `0.1.0`–`0.8.0` remain published+immutable.
+- Release setup status: Actions read/write + "allow Actions to create PRs" are
+  enabled (org-level, via the `github-settings` IaC repo); the crates.io Trusted
+  Publisher for `time_value` is registered. Still to do before the binaries
+  publish (issue #20): flip `-cli`/`-mcp` off `publish = false`, extend
+  `release-plz`/`publish.yml` to version + publish them, and register their
+  Trusted Publishers. The release-plz "chore: release v1.0.0" PR (#28) is **held**
+  until the `1.0.0` sequence completes.
 
 ## Deletion & creation
 

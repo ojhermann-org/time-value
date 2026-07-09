@@ -65,6 +65,13 @@ jobs:
       - name: Test
         run: nix develop -c cargo nextest run --workspace --all-features
 
+      # `--all-features` above enables `std`, so its `powf` runs — but the
+      # `no_std` + `libm` path (`libm::pow`) then never executes, only compiles.
+      # Run the core's tests under it too, so a std/libm numeric divergence can't
+      # slip through (ADR-0021).
+      - name: Test (no_std + libm)
+        run: nix develop -c cargo nextest run -p time_value --no-default-features --features libm
+
       # nextest does not run doctests; run them explicitly (they include the
       # `compile_fail` doctests that prove the periodicity mismatch is rejected).
       - name: Doctests
