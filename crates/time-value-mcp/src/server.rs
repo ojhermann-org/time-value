@@ -51,7 +51,10 @@ impl TimeValueServer {
     fn npv(&self, Parameters(input): Parameters<SeriesInput>) -> Result<CallToolResult, ErrorData> {
         let flows = cashflows(&input.cashflows)?;
         let series = Cashflows::<Monthly>::new(&flows);
-        let value = series.net_present_value(rate(input.rate)?).value();
+        let value = series
+            .net_present_value(rate(input.rate)?)
+            .map_err(tvm)?
+            .value();
         Ok(result("npv", value))
     }
 
@@ -62,7 +65,10 @@ impl TimeValueServer {
     fn nfv(&self, Parameters(input): Parameters<SeriesInput>) -> Result<CallToolResult, ErrorData> {
         let flows = cashflows(&input.cashflows)?;
         let series = Cashflows::<Monthly>::new(&flows);
-        let value = series.net_future_value(rate(input.rate)?).value();
+        let value = series
+            .net_future_value(rate(input.rate)?)
+            .map_err(tvm)?
+            .value();
         Ok(result("nfv", value))
     }
 
@@ -92,6 +98,7 @@ impl TimeValueServer {
             period(input.periods)?,
             money(input.future)?,
         )
+        .map_err(tvm)?
         .value();
         Ok(result("present_value", value))
     }
@@ -109,6 +116,7 @@ impl TimeValueServer {
             period(input.periods)?,
             money(input.present)?,
         )
+        .map_err(tvm)?
         .value();
         Ok(result("future_value", value))
     }
@@ -126,6 +134,7 @@ impl TimeValueServer {
             period(input.periods)?,
             money(input.payment)?,
         )
+        .map_err(tvm)?
         .value();
         Ok(result("annuity_present_value", value))
     }
@@ -143,6 +152,7 @@ impl TimeValueServer {
             period(input.periods)?,
             money(input.payment)?,
         )
+        .map_err(tvm)?
         .value();
         Ok(result("annuity_future_value", value))
     }

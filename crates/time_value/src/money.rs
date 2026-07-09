@@ -44,10 +44,18 @@ impl Money {
         self.0
     }
 
-    /// Constructs from an `f64` already known to be finite (internal use — the
-    /// results of validated arithmetic on validated inputs).
-    pub(crate) const fn from_finite(amount: f64) -> Self {
-        Self(amount)
+    /// Constructs from the `f64` result of an operation, validating finiteness.
+    ///
+    /// A non-finite result — an overflow, or a mathematically undefined case such
+    /// as an annuity payment over zero periods — is [`TvmError::NonFiniteResult`],
+    /// distinct from the [`TvmError::NonFiniteAmount`] that [`new`](Self::new)
+    /// returns for a non-finite value supplied by a *caller* (ADR-0021).
+    pub(crate) fn from_operation(amount: f64) -> Result<Self, TvmError> {
+        if amount.is_finite() {
+            Ok(Self(amount))
+        } else {
+            Err(TvmError::NonFiniteResult)
+        }
     }
 }
 

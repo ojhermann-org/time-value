@@ -41,7 +41,7 @@
 //! let flows = [Money::new(-100.0)?, Money::new(60.0)?, Money::new(60.0)?];
 //! let project = Cashflows::<Monthly>::new(&flows);
 //!
-//! let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?);
+//! let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?)?;
 //! assert!(npv.value() > 0.0); // worth doing at 1%/month
 //!
 //! let irr = project.internal_rate_of_return()?;
@@ -93,8 +93,16 @@ pub enum TvmError {
     /// A rate was not finite, or was less than or equal to `-1.0` (i.e. ≤ −100%),
     /// which is economically meaningless for discounting and compounding.
     RateOutOfRange,
-    /// A monetary amount was not finite (`NaN` or an infinity).
+    /// A monetary amount supplied to a constructor was not finite (`NaN` or an
+    /// infinity). For a non-finite value *produced by an operation*, see
+    /// [`NonFiniteResult`](Self::NonFiniteResult).
     NonFiniteAmount,
+    /// An operation did not produce a finite amount — its `f64` arithmetic
+    /// overflowed to an infinity or `NaN`, or the inputs were a mathematically
+    /// undefined case (e.g. an [`annuity::payment`](crate::annuity::payment) over
+    /// zero periods). Distinct from [`NonFiniteAmount`](Self::NonFiniteAmount),
+    /// which is a non-finite value passed *in* (ADR-0021).
+    NonFiniteResult,
     /// A period count was negative or not finite.
     NegativePeriods,
     /// An operation that requires at least one cashflow was given an empty
@@ -112,6 +120,9 @@ impl fmt::Display for TvmError {
                 f.write_str("rate must be finite and greater than -1.0 (-100%)")
             }
             Self::NonFiniteAmount => f.write_str("monetary amount must be finite"),
+            Self::NonFiniteResult => {
+                f.write_str("operation did not produce a finite amount (overflow or undefined)")
+            }
             Self::NegativePeriods => f.write_str("period count must be finite and non-negative"),
             Self::EmptyCashflows => f.write_str("cashflow series is empty"),
             Self::IrrDidNotConverge => f.write_str("internal rate of return did not converge"),

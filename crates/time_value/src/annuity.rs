@@ -55,13 +55,21 @@ fn future_value_factor(rate: f64, periods: f64) -> f64 {
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
 ///     Money::new(100.0)?,
-/// );
+/// )?;
 /// assert!((pv.value() - 1125.508).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
 /// ```
-#[must_use]
-pub fn present_value<P: Periodicity>(rate: Rate<P>, periods: Period, payment: Money) -> Money {
-    Money::from_finite(payment.value() * present_value_factor(rate.value(), periods.value()))
+///
+/// # Errors
+///
+/// [`TvmError::NonFiniteResult`] if the discounted sum overflows to a non-finite
+/// value on extreme rate/period magnitudes (ADR-0021).
+pub fn present_value<P: Periodicity>(
+    rate: Rate<P>,
+    periods: Period,
+    payment: Money,
+) -> Result<Money, TvmError> {
+    Money::from_operation(payment.value() * present_value_factor(rate.value(), periods.value()))
 }
 
 /// The future value of an ordinary annuity that pays `payment` at the end of
@@ -78,13 +86,21 @@ pub fn present_value<P: Periodicity>(rate: Rate<P>, periods: Period, payment: Mo
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
 ///     Money::new(100.0)?,
-/// );
+/// )?;
 /// assert!((fv.value() - 1268.250).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
 /// ```
-#[must_use]
-pub fn future_value<P: Periodicity>(rate: Rate<P>, periods: Period, payment: Money) -> Money {
-    Money::from_finite(payment.value() * future_value_factor(rate.value(), periods.value()))
+///
+/// # Errors
+///
+/// [`TvmError::NonFiniteResult`] if the compounded sum overflows to a non-finite
+/// value on extreme rate/period magnitudes (ADR-0021).
+pub fn future_value<P: Periodicity>(
+    rate: Rate<P>,
+    periods: Period,
+    payment: Money,
+) -> Result<Money, TvmError> {
+    Money::from_operation(payment.value() * future_value_factor(rate.value(), periods.value()))
 }
 
 /// The level payment that amortises a `present` value over `periods` periods at
@@ -109,16 +125,17 @@ pub fn future_value<P: Periodicity>(rate: Rate<P>, periods: Period, payment: Mon
 ///
 /// # Errors
 ///
-/// Returns [`TvmError::NonFiniteAmount`] if the amortisation is degenerate — in
+/// Returns [`TvmError::NonFiniteResult`] if the amortisation is degenerate — in
 /// particular when `periods` is zero, so there is nothing to amortise over and
-/// the payment is undefined.
+/// the payment is undefined (the factor is `0`, so the division is non-finite) —
+/// or if it overflows on extreme magnitudes (ADR-0021).
 pub fn payment<P: Periodicity>(
     rate: Rate<P>,
     periods: Period,
     present: Money,
 ) -> Result<Money, TvmError> {
     let factor = present_value_factor(rate.value(), periods.value());
-    Money::new(present.value() / factor)
+    Money::from_operation(present.value() / factor)
 }
 
 #[cfg(test)]
@@ -141,7 +158,8 @@ mod tests {
             rate(0.01),
             Period::new(12.0).unwrap(),
             Money::new(100.0).unwrap(),
-        );
+        )
+        .unwrap();
         assert!(approx(pv.value(), 1125.508, 1e-2));
     }
 
@@ -149,7 +167,7 @@ mod tests {
     fn payment_inverts_present_value() {
         let payment = Money::new(100.0).unwrap();
         let periods = Period::new(24.0).unwrap();
-        let pv = annuity::present_value(rate(0.015), periods, payment);
+        let pv = annuity::present_value(rate(0.015), periods, payment).unwrap();
         let recovered = annuity::payment(rate(0.015), periods, pv).unwrap();
         assert!(approx(recovered.value(), payment.value(), 1e-9));
     }
@@ -157,8 +175,8 @@ mod tests {
     #[test]
     fn future_value_is_present_value_compounded() {
         let periods = Period::new(12.0).unwrap();
-        let pv = annuity::present_value(rate(0.01), periods, Money::new(100.0).unwrap());
-        let fv = annuity::future_value(rate(0.01), periods, Money::new(100.0).unwrap());
+        let pv = annuity::present_value(rate(0.01), periods, Money::new(100.0).unwrap()).unwrap();
+        let fv = annuity::future_value(rate(0.01), periods, Money::new(100.0).unwrap()).unwrap();
         // FV = PV * (1 + r)^n; compound manually to avoid needing powf here.
         let mut growth = 1.0;
         for _ in 0..12 {
@@ -173,12 +191,16 @@ mod tests {
         let payment = Money::new(50.0).unwrap();
         // At r = 0 both factors are n, so PV = FV = payment * n.
         assert!(approx(
-            annuity::present_value(rate(0.0), periods, payment).value(),
+            annuity::present_value(rate(0.0), periods, payment)
+                .unwrap()
+                .value(),
             500.0,
             1e-9,
         ));
         assert!(approx(
-            annuity::future_value(rate(0.0), periods, payment).value(),
+            annuity::future_value(rate(0.0), periods, payment)
+                .unwrap()
+                .value(),
             500.0,
             1e-9,
         ));
@@ -187,6 +209,6 @@ mod tests {
     #[test]
     fn payment_over_zero_periods_is_degenerate() {
         let result = annuity::payment(rate(0.01), Period::ZERO, Money::new(1000.0).unwrap());
-        assert_eq!(result, Err(TvmError::NonFiniteAmount));
+        assert_eq!(result, Err(TvmError::NonFiniteResult));
     }
 }
