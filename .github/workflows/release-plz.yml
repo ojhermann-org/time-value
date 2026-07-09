@@ -8,8 +8,18 @@ name: release-plz
 # Repository settings required for the release-PR flow (owner-side, one-time):
 #   - Settings → Actions → General → Workflow permissions: Read and write
 #   - "Allow GitHub Actions to create and approve pull requests": enabled
-# A `RELEASE_PLZ_TOKEN` PAT is optional — set it so the release PR itself
-# triggers CI (PRs opened by the default GITHUB_TOKEN do not).
+# A `RELEASE_PLZ_TOKEN` PAT is REQUIRED for the actual publish: set it so the
+# release PR triggers CI *and* so the release tag triggers publish.yml — a tag
+# pushed by the default GITHUB_TOKEN does not trigger other workflows (GitHub's
+# recursion guard), so publish.yml never fires without it.
+#
+# ⏸️ HELD (2026-07-09): both jobs below are gated `if: ${{ false }}` while the core
+# is built out to a complete 1.0.0 before the first release (ADR-0022). Left live,
+# the `release` job tags `time_value-v<Cargo.toml version>` on EVERY push to main,
+# independent of the held release PR — it prematurely tagged + GitHub-released
+# 1.0.0 at commit b697e65 (since deleted; nothing reached crates.io because
+# publish.yml never fired, per the note above). To cut the real 1.0.0: remove the
+# two `if: ${{ false }}` guards below and set RELEASE_PLZ_TOKEN.
 
 on:
   push:
@@ -23,6 +33,7 @@ jobs:
   # Tag + create GitHub releases for versions that have merged into main.
   release:
     name: Release
+    if: ${{ false }} # ⏸️ HELD until the real 1.0.0 — see the hold note above
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,6 +54,7 @@ jobs:
   # Open/update the "Release" PR that bumps versions and writes changelogs.
   release-pr:
     name: Release PR
+    if: ${{ false }} # ⏸️ HELD until the real 1.0.0 — see the hold note above
     runs-on: ubuntu-latest
     concurrency:
       group: release-plz-pr-${{ github.ref }}
