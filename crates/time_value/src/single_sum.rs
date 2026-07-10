@@ -1,7 +1,7 @@
 //! Present and future value of a single amount.
 //!
 //! Both functions compound with `powf`; on extreme rate/period magnitudes the
-//! result can overflow to a non-finite [`Money`](crate::Money) (see its docs).
+//! result can overflow to a non-finite [`Money`] (see its docs).
 
 use crate::math::powf;
 use crate::{Money, Period, Periodicity, Rate, TvmError};
@@ -31,7 +31,7 @@ use crate::{Money, Period, Periodicity, Rate, TvmError};
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`](crate::TvmError::NonFiniteResult) if the
+/// [`TvmError::NonFiniteResult`] if the
 /// discounting overflows to a non-finite value on extreme rate/period magnitudes
 /// (ADR-0021).
 pub fn present_value<P: Periodicity>(
@@ -66,7 +66,7 @@ pub fn present_value<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`](crate::TvmError::NonFiniteResult) if the
+/// [`TvmError::NonFiniteResult`] if the
 /// compounding overflows to a non-finite value on extreme rate/period magnitudes
 /// (ADR-0021).
 pub fn future_value<P: Periodicity>(

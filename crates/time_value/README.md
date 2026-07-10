@@ -29,8 +29,8 @@ is caught before it can run.
 
 | Available on | Operations |
 |--------------|------------|
-| **any build** (`no_std`, zero dependencies) | `Cashflows::net_present_value`, `net_future_value`, `internal_rate_of_return` — they need only elementary arithmetic |
-| **with `std` or `libm`** | single-sum `present_value` / `future_value`, and `annuity::present_value` / `future_value` / `payment` — they need `powf`, so they also admit a fractional number of periods |
+| **any build** (`no_std`, zero dependencies) | `Cashflows::net_present_value`, `net_future_value`, `internal_rate_of_return`, and nominal-rate conversion (`Rate::from_nominal_annual` / `nominal_annual`) — they need only elementary arithmetic |
+| **with `std` or `libm`** | single-sum `present_value` / `future_value`, `annuity::present_value` / `future_value` / `payment`, and effective rate conversion between periodicities (`Rate::convert` / `effective_annual`) — they need `powf`, so they also admit a fractional number of periods |
 
 ## Example
 

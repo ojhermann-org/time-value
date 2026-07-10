@@ -164,4 +164,24 @@ proptest! {
         let recovered = annuity::payment(rate, periods, present).unwrap();
         prop_assert!(close(recovered.value(), payment.value(), 1e-6 * payment.value()));
     }
+
+    /// A periodicity conversion preserves economic value, so converting a monthly
+    /// rate to annual and back recovers it (ADR-0024). The quantity compared is
+    /// the *growth factor* `1 + r`, relative to its size.
+    ///
+    /// The range is bounded to realistic per-period rates (−50% … +200%). Far
+    /// below that, the intermediate *annual* growth factor `(1+r)^12` becomes
+    /// tiny, and representing it as a rate (`−1 + ε`) loses ε to catastrophic
+    /// cancellation — so the round-trip degrades near −100% by nature, not by
+    /// bug. That degenerate regime is pinned down by dedicated unit tests instead.
+    #[test]
+    fn converting_a_rate_there_and_back_preserves_the_growth_factor(rate in -0.5f64..2.0) {
+        let monthly = Rate::<Monthly>::new(rate).unwrap();
+        let round_trip = monthly
+            .effective_annual()
+            .unwrap()
+            .convert::<Monthly>()
+            .unwrap();
+        prop_assert!(close(1.0 + round_trip.value(), 1.0 + rate, 1e-9 * (1.0 + rate)));
+    }
 }
