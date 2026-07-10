@@ -29,14 +29,17 @@
 //! allocation-free [`amortization`] schedule iterator (from an explicit payment;
 //! its term-based constructor needs a feature).
 //!
-//! Operations that require transcendental functions (`powf`) live behind the
-//! optional `std` / `libm` features (see
+//! Operations that require transcendental functions (`powf`, `ln`) live behind
+//! the optional `std` / `libm` features (see
 //! `docs/adr/0009-no_std-and-optional-libm.md`): the [`single_sum`] module
-//! ([`present_value`](single_sum::present_value) /
-//! [`future_value`](single_sum::future_value), with the [`Period`] type), the
-//! [`annuity`] module, and effective rate conversions between periodicities
-//! ([`Rate::convert`] / [`Rate::effective_annual`]). Nominal-rate conversion
-//! ([`Rate::from_nominal_annual`] / [`Rate::nominal_annual`]) is plain
+//! (present/future value and the solve-for `periods` / `rate` inverses, with the
+//! [`Period`] type), the [`annuity`] module (ordinary, [annuity-due](annuity::due),
+//! and [perpetuity](annuity::perpetuity) forms, plus the `periods` / `rate`
+//! solves), the modified internal rate of return
+//! ([`Cashflows::modified_internal_rate_of_return`]), the term-based
+//! [`amortization`] constructor, and effective rate conversions between
+//! periodicities ([`Rate::convert`] / [`Rate::effective_annual`]). Nominal-rate
+//! conversion ([`Rate::from_nominal_annual`] / [`Rate::nominal_annual`]) is plain
 //! arithmetic and needs no feature.
 //!
 //! ```

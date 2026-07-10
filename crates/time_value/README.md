@@ -29,8 +29,8 @@ is caught before it can run.
 
 | Available on | Operations |
 |--------------|------------|
-| **any build** (`no_std`, zero dependencies) | `Cashflows::net_present_value`, `net_future_value`, `internal_rate_of_return`, and nominal-rate conversion (`Rate::from_nominal_annual` / `nominal_annual`) — they need only elementary arithmetic |
-| **with `std` or `libm`** | single-sum `present_value` / `future_value`, `annuity::present_value` / `future_value` / `payment`, and effective rate conversion between periodicities (`Rate::convert` / `effective_annual`) — they need `powf`, so they also admit a fractional number of periods |
+| **any build** (`no_std`, zero dependencies) | `Cashflows::net_present_value` / `net_future_value` / `internal_rate_of_return`; nominal-rate conversion (`Rate::from_nominal_annual` / `nominal_annual`); and the allocation-free `amortization::Schedule` from an explicit payment (`with_payment`) — they need only elementary arithmetic |
+| **with `std` or `libm`** | single-sum `present_value` / `future_value` and their solve-for inverses `periods` (NPER) / `rate` (RATE); the `annuity` module — ordinary, annuity-`due`, and `perpetuity` / `growing_perpetuity` forms, plus the `payment`, `periods`, and `rate` solves; the modified internal rate of return (`Cashflows::modified_internal_rate_of_return`); the term-based `amortization::Schedule::for_term`; and effective rate conversion between periodicities (`Rate::convert` / `effective_annual`) — they need `powf` / `ln`, so they also admit a fractional number of periods |
 
 ## Example
 
