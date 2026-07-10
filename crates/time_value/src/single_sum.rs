@@ -3,7 +3,7 @@
 //! Both functions compound with `powf`; on extreme rate/period magnitudes the
 //! result can overflow to a non-finite [`Money`] (see its docs).
 
-use crate::math::powf;
+use crate::math::{ln, powf};
 use crate::{Money, Period, Periodicity, Rate, TvmError};
 
 /// The present value of a single `future` amount received `periods` periods from
@@ -78,9 +78,88 @@ pub fn future_value<P: Periodicity>(
     Money::from_operation(present.value() * growth)
 }
 
+/// The number of periods for a single `present` amount to grow to `future` at
+/// `rate` — [`future_value`] / [`present_value`] solved for `n` (the single-sum
+/// NPER).
+///
+/// `n = ln(FV / PV) / ln(1 + r)`. A zero rate is rejected: with no growth, no
+/// finite `n` maps `PV` to a different `FV`.
+///
+/// # Examples
+///
+/// ```
+/// use time_value::{single_sum, Money, Monthly, Period, Rate};
+///
+/// // How long for 1000 to reach ~1126.83 at 1% per month? A year.
+/// let n = single_sum::periods(
+///     Rate::<Monthly>::new(0.01)?,
+///     Money::new(1000.0)?,
+///     Money::new(1126.825)?,
+/// )?;
+/// assert!((n.value() - 12.0).abs() < 1e-2);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+///
+/// # Errors
+///
+/// - [`TvmError::NonFiniteResult`] if `rate` is zero (no growth, so `n` is
+///   undefined) or `future / present` is non-positive (no real logarithm).
+/// - [`TvmError::NegativePeriods`] if the solved `n` is negative — `future` lies
+///   *before* `present` at this rate (e.g. `future < present` with a positive
+///   rate).
+pub fn periods<P: Periodicity>(
+    rate: Rate<P>,
+    present: Money,
+    future: Money,
+) -> Result<Period, TvmError> {
+    let n = ln(future.value() / present.value()) / ln(1.0 + rate.value());
+    Period::from_operation(n)
+}
+
+/// The per-period rate at which a single `present` amount grows to `future` over
+/// `periods` — [`future_value`] / [`present_value`] solved for `r` (the
+/// single-sum RATE).
+///
+/// `r = (FV / PV)^(1/n) − 1`. The scalar inputs carry no periodicity, so the
+/// caller names it: `single_sum::rate::<Monthly>(…)`.
+///
+/// # Examples
+///
+/// ```
+/// use time_value::{single_sum, Money, Monthly, Period, Rate};
+///
+/// // What monthly rate grows 1000 to ~1126.83 over a year? About 1%.
+/// let r = single_sum::rate::<Monthly>(
+///     Period::new(12.0)?,
+///     Money::new(1000.0)?,
+///     Money::new(1126.825)?,
+/// )?;
+/// assert!((r.value() - 0.01).abs() < 1e-4);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+///
+/// # Errors
+///
+/// - [`TvmError::NonFiniteResult`] if `periods` is zero (no elapsed time, so the
+///   rate is undefined) or the power overflows on extreme magnitudes.
+/// - [`TvmError::RateOutOfRange`] if the implied growth factor `(FV / PV)^(1/n)`
+///   is non-positive — e.g. `future / present` is negative — so the rate would be
+///   `≤ −100%`.
+pub fn rate<P: Periodicity>(
+    periods: Period,
+    present: Money,
+    future: Money,
+) -> Result<Rate<P>, TvmError> {
+    if periods.value() <= 0.0 {
+        return Err(TvmError::NonFiniteResult);
+    }
+    let growth = powf(future.value() / present.value(), 1.0 / periods.value());
+    Rate::from_operation(growth - 1.0)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{future_value, present_value};
+    use super::{future_value, periods, present_value, rate as solve_rate};
     use crate::{Money, Monthly, Period, Rate, TvmError};
 
     /// `no_std`-safe approximate equality (no `f64::abs`).
@@ -147,6 +226,62 @@ mod tests {
         let amount = Money::new(1e6).unwrap();
         assert_eq!(
             future_value(rate, periods, amount),
+            Err(TvmError::NonFiniteResult)
+        );
+    }
+
+    #[test]
+    fn periods_inverts_future_value() {
+        let (rate, n, present) = setup();
+        let future = future_value(rate, n, present).unwrap();
+        let recovered = periods(rate, present, future).unwrap();
+        assert!(approx(recovered.value(), n.value()));
+    }
+
+    #[test]
+    fn rate_inverts_future_value() {
+        let (r, n, present) = setup();
+        let future = future_value(r, n, present).unwrap();
+        let recovered = solve_rate::<Monthly>(n, present, future).unwrap();
+        assert!(approx(recovered.value(), r.value()));
+    }
+
+    #[test]
+    fn periods_with_zero_rate_is_undefined() {
+        // No growth, so no finite n maps 1000 to 2000.
+        let rate = Rate::<Monthly>::new(0.0).unwrap();
+        assert_eq!(
+            periods(
+                rate,
+                Money::new(1000.0).unwrap(),
+                Money::new(2000.0).unwrap()
+            ),
+            Err(TvmError::NonFiniteResult)
+        );
+    }
+
+    #[test]
+    fn periods_for_a_future_below_present_is_negative() {
+        // At a positive rate, reaching 500 from 1000 is in the past.
+        let rate = Rate::<Monthly>::new(0.01).unwrap();
+        assert_eq!(
+            periods(
+                rate,
+                Money::new(1000.0).unwrap(),
+                Money::new(500.0).unwrap()
+            ),
+            Err(TvmError::NegativePeriods)
+        );
+    }
+
+    #[test]
+    fn rate_over_zero_periods_is_undefined() {
+        assert_eq!(
+            solve_rate::<Monthly>(
+                Period::ZERO,
+                Money::new(1000.0).unwrap(),
+                Money::new(2000.0).unwrap(),
+            ),
             Err(TvmError::NonFiniteResult)
         );
     }

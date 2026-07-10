@@ -41,6 +41,24 @@ impl Period {
     pub const fn value(self) -> f64 {
         self.0
     }
+
+    /// Constructs from the `f64` result of a solve (e.g. a solved NPER),
+    /// distinguishing a non-finite result — an overflow or a mathematically
+    /// undefined case — from a finite but negative one.
+    ///
+    /// A non-finite value is [`TvmError::NonFiniteResult`] (the mirror of
+    /// [`Money::from_operation`](crate::Money) and [`Rate::from_operation`], per
+    /// ADR-0021); a finite negative count — a period count solved into the past —
+    /// is [`TvmError::NegativePeriods`], the same variant [`new`](Self::new) uses.
+    ///
+    /// [`Rate::from_operation`]: crate::Rate
+    pub(crate) fn from_operation(periods: f64) -> Result<Self, TvmError> {
+        if periods.is_finite() {
+            Self::new(periods)
+        } else {
+            Err(TvmError::NonFiniteResult)
+        }
+    }
 }
 
 impl fmt::Display for Period {

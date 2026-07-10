@@ -67,6 +67,7 @@ mod cashflows;
 mod money;
 mod periodicity;
 mod rate;
+mod root;
 
 pub use cashflows::Cashflows;
 pub use money::Money;
@@ -114,6 +115,12 @@ pub enum TvmError {
     /// [`Cashflows::internal_rate_of_return`] did not converge to a root within
     /// its iteration budget, or the iteration left the valid rate domain.
     IrrDidNotConverge,
+    /// A solve-for-rate operation did not converge to a root — no rate satisfies
+    /// the relationship over the valid domain (e.g. [`annuity::rate`] when no rate
+    /// prices the given payment stream at the target value). Distinct from
+    /// [`IrrDidNotConverge`](Self::IrrDidNotConverge), which is specific to
+    /// [`Cashflows::internal_rate_of_return`].
+    SolveDidNotConverge,
     /// A perpetuity's present value diverges because its rate does not exceed its
     /// growth rate (`r <= g`; for a level perpetuity, `r <= 0`). The closed form
     /// `PMT / (r - g)` would return either an infinity (`r = g`) or a finite but
@@ -136,6 +143,7 @@ impl fmt::Display for TvmError {
             Self::NegativePeriods => f.write_str("period count must be finite and non-negative"),
             Self::EmptyCashflows => f.write_str("cashflow series is empty"),
             Self::IrrDidNotConverge => f.write_str("internal rate of return did not converge"),
+            Self::SolveDidNotConverge => f.write_str("solve for rate did not converge"),
             Self::DivergentPerpetuity => {
                 f.write_str("perpetuity present value diverges: rate does not exceed growth rate")
             }

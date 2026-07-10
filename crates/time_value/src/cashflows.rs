@@ -3,6 +3,7 @@
 
 use core::marker::PhantomData;
 
+use crate::root::{abs, within};
 use crate::{Money, Periodicity, Rate, TvmError};
 
 /// A periodicity-tagged series of cashflows at consecutive periods `0, 1, 2, …`.
@@ -207,39 +208,11 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     }
 
     /// Scan the valid rate domain (`r > −1`) for a sign change in the NPV and
-    /// bisect the first bracket found. `None` if the NPV never changes sign (no
-    /// real IRR). Samples `1 + r` geometrically from just above `0` upward, a
-    /// ratio fine enough not to step over a lone root of a conventional series.
+    /// bisect the first bracket found — the shared robust fallback
+    /// ([`root::bracket_and_bisect`](crate::root)). `None` if the NPV never changes
+    /// sign (no real IRR).
     fn bracket_and_bisect(self, tolerance: f64) -> Option<f64> {
-        const MAX_BISECTIONS: u32 = 200;
-        const START: f64 = 1e-4; // 1 + r, i.e. r = -0.9999
-        const RATIO: f64 = 1.25;
-        const SAMPLES: u32 = 160; // reaches 1 + r ≈ 1e15
-
-        let mut lo = START - 1.0;
-        let mut f_lo = self.npv_at(lo);
-        let mut growth = START;
-        for _ in 0..SAMPLES {
-            if within(f_lo, tolerance) {
-                return Some(lo);
-            }
-            growth *= RATIO;
-            let hi = growth - 1.0;
-            let f_hi = self.npv_at(hi);
-            if opposite_signs(f_lo, f_hi) {
-                return Some(bisect(
-                    |r| self.npv_at(r),
-                    lo,
-                    hi,
-                    f_lo,
-                    tolerance,
-                    MAX_BISECTIONS,
-                ));
-            }
-            lo = hi;
-            f_lo = f_hi;
-        }
-        None
+        crate::root::bracket_and_bisect(|r| self.npv_at(r), tolerance)
     }
 
     /// The NPV at a candidate per-period `rate` (no derivative), accumulated in
@@ -276,55 +249,9 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     }
 }
 
-/// Bisect for the root of `f` in `[lo, hi]`, where `f` has opposite signs at the
-/// ends (`f_lo` is `f(lo)`). Returns as soon as a sample is within `tol` of zero,
-/// or the midpoint after `max` steps.
-fn bisect(
-    f: impl Fn(f64) -> f64,
-    mut lo: f64,
-    mut hi: f64,
-    mut f_lo: f64,
-    tol: f64,
-    max: u32,
-) -> f64 {
-    for _ in 0..max {
-        let mid = 0.5 * (lo + hi);
-        let f_mid = f(mid);
-        if within(f_mid, tol) {
-            return mid;
-        }
-        if opposite_signs(f_lo, f_mid) {
-            hi = mid;
-        } else {
-            lo = mid;
-            f_lo = f_mid;
-        }
-    }
-    0.5 * (lo + hi)
-}
-
-/// `|x| < tolerance`, without `f64::abs` (which is not in `core`).
-fn within(x: f64, tolerance: f64) -> bool {
-    x < tolerance && x > -tolerance
-}
-
-/// `|x|`, without `f64::abs` (which is not in `core`).
-fn abs(x: f64) -> f64 {
-    if x < 0.0 {
-        -x
-    } else {
-        x
-    }
-}
-
-/// Whether `a` and `b` are both non-zero and of opposite sign.
-fn opposite_signs(a: f64, b: f64) -> bool {
-    (a < 0.0 && b > 0.0) || (a > 0.0 && b < 0.0)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::within;
+    use crate::root::within;
     use crate::{Cashflows, Money, Monthly, Rate, TvmError};
 
     /// `no_std`-safe approximate equality for the tests (no `f64::abs`).
