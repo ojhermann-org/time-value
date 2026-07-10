@@ -204,4 +204,91 @@ proptest! {
             .unwrap();
         prop_assert!(close(1.0 + round_trip.value(), 1.0 + rate, 1e-9 * (1.0 + rate)));
     }
+
+    /// Solving a single sum for `n` (NPER) inverts compounding: the number of
+    /// periods that grows `present` to its own future value is the periods used.
+    /// A positive rate keeps the growth unambiguous (a zero rate has no solution).
+    #[test]
+    fn single_sum_periods_inverts_future_value(
+        present in 1.0f64..1e6,
+        rate in 0.001f64..1.0,
+        periods in 1.0f64..120.0,
+    ) {
+        use time_value::{single_sum, Period};
+
+        let r = Rate::<Monthly>::new(rate).unwrap();
+        let present = Money::new(present).unwrap();
+        let n = Period::new(periods).unwrap();
+
+        let future = single_sum::future_value(r, n, present).unwrap();
+        let recovered = single_sum::periods(r, present, future).unwrap();
+        prop_assert!(close(recovered.value(), periods, 1e-6 * periods));
+    }
+
+    /// Solving a single sum for `r` (RATE) inverts compounding: the rate that
+    /// grows `present` to its own future value is the rate used. Compared as the
+    /// growth factor `1 + r`, relative to its size (as the conversion test does).
+    #[test]
+    fn single_sum_rate_inverts_future_value(
+        present in 1.0f64..1e6,
+        rate in -0.5f64..1.0,
+        periods in 1.0f64..120.0,
+    ) {
+        use time_value::{single_sum, Period};
+
+        let r = Rate::<Monthly>::new(rate).unwrap();
+        let present = Money::new(present).unwrap();
+        let n = Period::new(periods).unwrap();
+
+        let future = single_sum::future_value(r, n, present).unwrap();
+        let recovered = single_sum::rate::<Monthly>(n, present, future).unwrap();
+        prop_assert!(close(1.0 + recovered.value(), 1.0 + rate, 1e-6 * (1.0 + rate)));
+    }
+
+    /// Solving an annuity for `n` (NPER) inverts pricing: the number of payments
+    /// that amortise a stream's own present value is the count used. A positive
+    /// rate keeps the payment above the period's interest, so `n` is defined.
+    ///
+    /// The range is bounded to a well-conditioned regime (`n·ln(1+r)` modest).
+    /// Beyond it the round-trip degrades *by nature*: `present_value` forms
+    /// `1 − (1+r)⁻ⁿ`, and once `(1+r)⁻ⁿ` underflows toward `0` the present value
+    /// saturates at `PMT/r`, so `n` is no longer recoverable from it — a
+    /// cancellation limit at the pricing step, not a solver bug. (The single-sum
+    /// and future-value NPER use clean ratios and don't hit it.)
+    #[test]
+    fn annuity_periods_inverts_present_value(
+        payment in 1.0f64..1e5,
+        rate in 0.001f64..0.2,
+        periods in 1.0f64..60.0,
+    ) {
+        use time_value::{annuity, Period};
+
+        let r = Rate::<Monthly>::new(rate).unwrap();
+        let payment = Money::new(payment).unwrap();
+        let n = Period::new(periods).unwrap();
+
+        let present = annuity::present_value(r, n, payment).unwrap();
+        let recovered = annuity::periods(r, payment, present).unwrap();
+        prop_assert!(close(recovered.value(), periods, 1e-6 * periods));
+    }
+
+    /// Solving an annuity for `r` (RATE) inverts pricing: the iterative solver
+    /// recovers the rate that prices a stream at its own present value. Compared
+    /// as the growth factor `1 + r`, relative to its size.
+    #[test]
+    fn annuity_rate_inverts_present_value(
+        payment in 1.0f64..1e5,
+        rate in -0.5f64..1.0,
+        periods in 1.0f64..120.0,
+    ) {
+        use time_value::{annuity, Period};
+
+        let r = Rate::<Monthly>::new(rate).unwrap();
+        let payment = Money::new(payment).unwrap();
+        let n = Period::new(periods).unwrap();
+
+        let present = annuity::present_value(r, n, payment).unwrap();
+        let recovered = annuity::rate::<Monthly>(n, payment, present).unwrap();
+        prop_assert!(close(1.0 + recovered.value(), 1.0 + rate, 1e-6 * (1.0 + rate)));
+    }
 }

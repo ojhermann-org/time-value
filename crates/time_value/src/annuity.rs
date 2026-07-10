@@ -16,7 +16,8 @@
 //! [`Money`] (see its docs). A perpetuity instead diverges when its rate does not
 //! exceed its growth rate, which its constructors reject.
 
-use crate::math::powf;
+use crate::math::{ln, powf};
+use crate::root::{abs, bracket_and_bisect};
 use crate::{Money, Period, Periodicity, Rate, TvmError};
 
 /// Rate magnitude below which the `r → 0` limit is used instead of the closed
@@ -211,6 +212,192 @@ pub fn growing_perpetuity<P: Periodicity>(
         return Err(TvmError::DivergentPerpetuity);
     }
     Money::from_operation(payment.value() / (rate.value() - growth.value()))
+}
+
+/// The number of level `payment`s that amortise a `present` value at `rate` —
+/// [`present_value`] solved for `n` (the annuity NPER).
+///
+/// `n = −ln(1 − PV·r / PMT) / ln(1 + r)`, or `n = PV / PMT` when `r = 0`.
+///
+/// # Examples
+///
+/// ```
+/// use time_value::{annuity, Money, Monthly, Rate};
+///
+/// // How many 100/month payments retire a 1125.508 loan at 1%/month? A year.
+/// let n = annuity::periods(
+///     Rate::<Monthly>::new(0.01)?,
+///     Money::new(100.0)?,
+///     Money::new(1125.508)?,
+/// )?;
+/// assert!((n.value() - 12.0).abs() < 1e-2);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+///
+/// # Errors
+///
+/// [`TvmError::NonFiniteResult`] if the payment never retires the balance — when
+/// `PMT ≤ PV·r`, the payment does not even cover the period's interest, so the
+/// logarithm's argument is non-positive and `n` is undefined. [`NegativePeriods`]
+/// if the solved `n` is negative.
+///
+/// [`NegativePeriods`]: TvmError::NegativePeriods
+pub fn periods<P: Periodicity>(
+    rate: Rate<P>,
+    payment: Money,
+    present: Money,
+) -> Result<Period, TvmError> {
+    let r = rate.value();
+    let n = if near_zero(r) {
+        present.value() / payment.value()
+    } else {
+        -ln(1.0 - present.value() * r / payment.value()) / ln(1.0 + r)
+    };
+    Period::from_operation(n)
+}
+
+/// The number of level `payment`s that accumulate to a `future` value at `rate` —
+/// [`future_value`] solved for `n` (the annuity NPER, future-value form).
+///
+/// `n = ln(1 + FV·r / PMT) / ln(1 + r)`, or `n = FV / PMT` when `r = 0`.
+///
+/// # Examples
+///
+/// ```
+/// use time_value::{annuity, Money, Monthly, Rate};
+///
+/// // How many 100/month contributions reach ~1268.25 at 1%/month? A year.
+/// let n = annuity::periods_from_future(
+///     Rate::<Monthly>::new(0.01)?,
+///     Money::new(100.0)?,
+///     Money::new(1268.250)?,
+/// )?;
+/// assert!((n.value() - 12.0).abs() < 1e-2);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+///
+/// # Errors
+///
+/// [`TvmError::NonFiniteResult`] if `1 + FV·r / PMT` is non-positive (no real
+/// logarithm), or [`TvmError::NegativePeriods`] if the solved `n` is negative.
+pub fn periods_from_future<P: Periodicity>(
+    rate: Rate<P>,
+    payment: Money,
+    future: Money,
+) -> Result<Period, TvmError> {
+    let r = rate.value();
+    let n = if near_zero(r) {
+        future.value() / payment.value()
+    } else {
+        ln(1.0 + future.value() * r / payment.value()) / ln(1.0 + r)
+    };
+    Period::from_operation(n)
+}
+
+/// The per-period rate at which `periods` level `payment`s amortise a `present`
+/// value — [`present_value`] solved for `r` (the annuity RATE).
+///
+/// There is no closed form, so this solves iteratively, reusing the robust
+/// bracketing search behind the internal rate of return (ADR-0020): the rate is
+/// the root of `PMT · a(r, n) − PV`, where `a` is the present-value annuity
+/// factor. The scalar inputs carry no periodicity, so the caller names it:
+/// `annuity::rate::<Monthly>(…)`.
+///
+/// # Examples
+///
+/// ```
+/// use time_value::{annuity, Money, Monthly, Period, Rate};
+///
+/// // What monthly rate amortises 1125.508 with 12 payments of 100? About 1%.
+/// let r = annuity::rate::<Monthly>(
+///     Period::new(12.0)?,
+///     Money::new(100.0)?,
+///     Money::new(1125.508)?,
+/// )?;
+/// assert!((r.value() - 0.01).abs() < 1e-4);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+///
+/// # Errors
+///
+/// [`TvmError::SolveDidNotConverge`] if no rate prices the payment stream at
+/// `present` (e.g. incompatible signs), or [`TvmError::RateOutOfRange`] /
+/// [`TvmError::NonFiniteResult`] if the located root is outside the valid rate
+/// domain or non-finite.
+pub fn rate<P: Periodicity>(
+    periods: Period,
+    payment: Money,
+    present: Money,
+) -> Result<Rate<P>, TvmError> {
+    solve_rate(
+        periods.value(),
+        payment.value(),
+        present.value(),
+        present_value_factor,
+    )
+}
+
+/// The per-period rate at which `periods` level `payment`s accumulate to a
+/// `future` value — [`future_value`] solved for `r` (the annuity RATE,
+/// future-value form).
+///
+/// Solves iteratively like [`rate`], but for the root of `PMT · s(r, n) − FV`,
+/// where `s` is the future-value annuity factor. Names its periodicity the same
+/// way: `annuity::rate_from_future::<Monthly>(…)`.
+///
+/// # Examples
+///
+/// ```
+/// use time_value::{annuity, Money, Monthly, Period, Rate};
+///
+/// // What monthly rate accumulates 12 payments of 100 to ~1268.25? About 1%.
+/// let r = annuity::rate_from_future::<Monthly>(
+///     Period::new(12.0)?,
+///     Money::new(100.0)?,
+///     Money::new(1268.250)?,
+/// )?;
+/// assert!((r.value() - 0.01).abs() < 1e-4);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+///
+/// # Errors
+///
+/// As [`rate`].
+pub fn rate_from_future<P: Periodicity>(
+    periods: Period,
+    payment: Money,
+    future: Money,
+) -> Result<Rate<P>, TvmError> {
+    solve_rate(
+        periods.value(),
+        payment.value(),
+        future.value(),
+        future_value_factor,
+    )
+}
+
+/// Solve `payment · factor(r, periods) = target` for the per-period rate `r`.
+///
+/// `factor` is [`present_value_factor`] or [`future_value_factor`]; both are
+/// monotone in `r`, so the residual has a single root, located by the shared
+/// bracketing bisection ([`root::bracket_and_bisect`](crate::root)). The
+/// tolerance is relative to the target magnitude (floored at `1`), mirroring the
+/// IRR convergence check (ADR-0021).
+fn solve_rate<P: Periodicity>(
+    periods: f64,
+    payment: f64,
+    target: f64,
+    factor: impl Fn(f64, f64) -> f64,
+) -> Result<Rate<P>, TvmError> {
+    let mut scale = abs(target);
+    if !scale.is_finite() || scale < 1.0 {
+        scale = 1.0;
+    }
+    let tolerance = 1e-9 * scale;
+    match bracket_and_bisect(|r| payment * factor(r, periods) - target, tolerance) {
+        Some(r) => Rate::from_operation(r),
+        None => Err(TvmError::SolveDidNotConverge),
+    }
 }
 
 /// Annuity-due variants: a fixed payment at the *start* of each period.
@@ -503,6 +690,92 @@ mod tests {
         assert_eq!(
             annuity::growing_perpetuity(rate(0.02), rate(0.05), payment),
             Err(TvmError::DivergentPerpetuity),
+        );
+    }
+
+    #[test]
+    fn periods_inverts_present_value() {
+        let periods = Period::new(12.0).unwrap();
+        let payment = Money::new(100.0).unwrap();
+        let present = annuity::present_value(rate(0.01), periods, payment).unwrap();
+        let recovered = annuity::periods(rate(0.01), payment, present).unwrap();
+        assert!(approx(recovered.value(), periods.value(), 1e-6));
+    }
+
+    #[test]
+    fn periods_from_future_inverts_future_value() {
+        let periods = Period::new(12.0).unwrap();
+        let payment = Money::new(100.0).unwrap();
+        let future = annuity::future_value(rate(0.01), periods, payment).unwrap();
+        let recovered = annuity::periods_from_future(rate(0.01), payment, future).unwrap();
+        assert!(approx(recovered.value(), periods.value(), 1e-6));
+    }
+
+    #[test]
+    fn periods_zero_rate_uses_the_limit() {
+        // At r = 0, PV = PMT·n, so n = PV / PMT.
+        let n = annuity::periods(
+            rate(0.0),
+            Money::new(100.0).unwrap(),
+            Money::new(1200.0).unwrap(),
+        )
+        .unwrap();
+        assert!(approx(n.value(), 12.0, 1e-9));
+    }
+
+    #[test]
+    fn periods_when_payment_cannot_cover_interest_is_undefined() {
+        // 5% on a 10000 balance is 500/period, but the payment is only 100, so the
+        // balance never amortises: n is undefined.
+        assert_eq!(
+            annuity::periods(
+                rate(0.05),
+                Money::new(100.0).unwrap(),
+                Money::new(10_000.0).unwrap(),
+            ),
+            Err(TvmError::NonFiniteResult)
+        );
+    }
+
+    #[test]
+    fn rate_inverts_present_value() {
+        let periods = Period::new(12.0).unwrap();
+        let payment = Money::new(100.0).unwrap();
+        let present = annuity::present_value(rate(0.01), periods, payment).unwrap();
+        let recovered = annuity::rate::<Monthly>(periods, payment, present).unwrap();
+        assert!(approx(recovered.value(), 0.01, 1e-6));
+    }
+
+    #[test]
+    fn rate_from_future_inverts_future_value() {
+        let periods = Period::new(12.0).unwrap();
+        let payment = Money::new(100.0).unwrap();
+        let future = annuity::future_value(rate(0.01), periods, payment).unwrap();
+        let recovered = annuity::rate_from_future::<Monthly>(periods, payment, future).unwrap();
+        assert!(approx(recovered.value(), 0.01, 1e-6));
+    }
+
+    #[test]
+    fn rate_recovers_a_negative_rate() {
+        // A payment stream can price above PMT·n only at a negative rate.
+        let periods = Period::new(12.0).unwrap();
+        let payment = Money::new(100.0).unwrap();
+        let present = annuity::present_value(rate(-0.02), periods, payment).unwrap();
+        let recovered = annuity::rate::<Monthly>(periods, payment, present).unwrap();
+        assert!(approx(recovered.value(), -0.02, 1e-6));
+    }
+
+    #[test]
+    fn rate_without_a_solution_does_not_converge() {
+        // A positive payment can never price to a negative present value, so no
+        // rate solves it.
+        assert_eq!(
+            annuity::rate::<Monthly>(
+                Period::new(12.0).unwrap(),
+                Money::new(100.0).unwrap(),
+                Money::new(-1000.0).unwrap(),
+            ),
+            Err(TvmError::SolveDidNotConverge)
         );
     }
 }
