@@ -25,7 +25,9 @@
 //!
 //! The discrete operations — [`net_present_value`], [`net_future_value`], and
 //! [`internal_rate_of_return`] — need only elementary arithmetic and are
-//! available in the default `no_std`, zero-dependency build.
+//! available in the default `no_std`, zero-dependency build, as is the
+//! allocation-free [`amortization`] schedule iterator (from an explicit payment;
+//! its term-based constructor needs a feature).
 //!
 //! Operations that require transcendental functions (`powf`) live behind the
 //! optional `std` / `libm` features (see
@@ -63,6 +65,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 
+pub mod amortization;
 mod cashflows;
 mod money;
 mod periodicity;
