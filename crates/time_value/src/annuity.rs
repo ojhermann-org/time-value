@@ -7,7 +7,7 @@
 //! `r → 0` limit, where the annuity factors collapse to `n`
 //! (`docs/adr/0015-annuities.md`). The factors compound with `powf`, so on
 //! extreme rate/period magnitudes a value can overflow to a non-finite
-//! [`Money`](crate::Money) (see its docs).
+//! [`Money`] (see its docs).
 
 use crate::math::powf;
 use crate::{Money, Period, Periodicity, Rate, TvmError};

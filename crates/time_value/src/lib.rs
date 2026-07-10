@@ -31,8 +31,11 @@
 //! optional `std` / `libm` features (see
 //! `docs/adr/0009-no_std-and-optional-libm.md`): the [`single_sum`] module
 //! ([`present_value`](single_sum::present_value) /
-//! [`future_value`](single_sum::future_value), with the [`Period`] type) and the
-//! [`annuity`] module, plus rate conversions to follow.
+//! [`future_value`](single_sum::future_value), with the [`Period`] type), the
+//! [`annuity`] module, and effective rate conversions between periodicities
+//! ([`Rate::convert`] / [`Rate::effective_annual`]). Nominal-rate conversion
+//! ([`Rate::from_nominal_annual`] / [`Rate::nominal_annual`]) is plain
+//! arithmetic and needs no feature.
 //!
 //! ```
 //! use time_value::{Cashflows, Money, Monthly, Rate};
@@ -99,7 +102,7 @@ pub enum TvmError {
     NonFiniteAmount,
     /// An operation did not produce a finite amount — its `f64` arithmetic
     /// overflowed to an infinity or `NaN`, or the inputs were a mathematically
-    /// undefined case (e.g. an [`annuity::payment`](crate::annuity::payment) over
+    /// undefined case (e.g. an [`annuity::payment`] over
     /// zero periods). Distinct from [`NonFiniteAmount`](Self::NonFiniteAmount),
     /// which is a non-finite value passed *in* (ADR-0021).
     NonFiniteResult,

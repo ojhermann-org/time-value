@@ -15,6 +15,13 @@ readme = "README.md"
 keywords = ["finance", "tvm", "npv", "irr", "annuity"]
 categories = ["finance", "mathematics", "no-std"]
 
+[package.metadata.docs.rs]
+# docs.rs builds with default features only, but the single-sum, annuity, and
+# rate-conversion APIs — and the intra-doc links pointing at them — live behind
+# `std`/`libm` (ADR-0009). Build the docs with all features so the full surface
+# is documented and those links resolve.
+all-features = true
+
 [lints]
 workspace = true
 

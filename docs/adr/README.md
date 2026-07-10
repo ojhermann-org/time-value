@@ -42,3 +42,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0021](0021-fallible-operations-on-non-finite-results.md) | Operations are fallible when their result can be non-finite | Accepted (amended by 0023) |
 | [0022](0022-core-first-sequencing-before-the-first-release.md) | Core-first sequencing before the first release | Accepted |
 | [0023](0023-money-arithmetic-surface.md) | The `Money` arithmetic surface — `Neg` and `try_*` | Accepted |
+| [0024](0024-rate-conversions-effective-and-nominal.md) | Rate conversions — effective between periodicities, nominal as a quote | Accepted |
