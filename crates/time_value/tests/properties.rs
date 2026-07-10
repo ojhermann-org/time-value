@@ -4,8 +4,9 @@
 //! rather than a handful of worked examples: present and future value invert
 //! each other, net present value is monotone in the discount rate and collapses
 //! to the plain sum at a zero rate, the internal rate of return zeroes the net
-//! present value, the annuity payment inverts the annuity present value, and
-//! `Money`'s arithmetic obeys the usual algebraic laws.
+//! present value, the annuity payment inverts the annuity present value (for both
+//! ordinary and annuity-due), and `Money`'s arithmetic obeys the usual algebraic
+//! laws.
 //!
 //! `proptest` is a dev-dependency only, so it never reaches the published
 //! crate's dependency tree (the zero-dependency promise is about distribution,
@@ -162,6 +163,25 @@ proptest! {
 
         let present = annuity::present_value(rate, periods, payment).unwrap();
         let recovered = annuity::payment(rate, periods, present).unwrap();
+        prop_assert!(close(recovered.value(), payment.value(), 1e-6 * payment.value()));
+    }
+
+    /// The same inverse relationship holds for the annuity-due variant: pricing a
+    /// start-of-period payment stream then amortising that price recovers it.
+    #[test]
+    fn due_payment_inverts_due_present_value(
+        payment in 1.0f64..1e5,
+        rate in -0.9f64..1.0,
+        periods in 1.0f64..120.0,
+    ) {
+        use time_value::{annuity, Period};
+
+        let rate = Rate::<Monthly>::new(rate).unwrap();
+        let periods = Period::new(periods).unwrap();
+        let payment = Money::new(payment).unwrap();
+
+        let present = annuity::due::present_value(rate, periods, payment).unwrap();
+        let recovered = annuity::due::payment(rate, periods, present).unwrap();
         prop_assert!(close(recovered.value(), payment.value(), 1e-6 * payment.value()));
     }
 

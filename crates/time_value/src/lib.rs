@@ -114,6 +114,13 @@ pub enum TvmError {
     /// [`Cashflows::internal_rate_of_return`] did not converge to a root within
     /// its iteration budget, or the iteration left the valid rate domain.
     IrrDidNotConverge,
+    /// A perpetuity's present value diverges because its rate does not exceed its
+    /// growth rate (`r <= g`; for a level perpetuity, `r <= 0`). The closed form
+    /// `PMT / (r - g)` would return either an infinity (`r = g`) or a finite but
+    /// economically meaningless value (`r < g`) for a series that does not
+    /// converge, so [`annuity::perpetuity`] / [`annuity::growing_perpetuity`]
+    /// reject it instead (ADR-0015).
+    DivergentPerpetuity,
 }
 
 impl fmt::Display for TvmError {
@@ -129,6 +136,9 @@ impl fmt::Display for TvmError {
             Self::NegativePeriods => f.write_str("period count must be finite and non-negative"),
             Self::EmptyCashflows => f.write_str("cashflow series is empty"),
             Self::IrrDidNotConverge => f.write_str("internal rate of return did not converge"),
+            Self::DivergentPerpetuity => {
+                f.write_str("perpetuity present value diverges: rate does not exceed growth rate")
+            }
         }
     }
 }
