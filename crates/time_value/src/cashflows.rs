@@ -3,6 +3,8 @@
 
 use core::marker::PhantomData;
 
+#[cfg(any(feature = "std", feature = "libm"))]
+use crate::math::powf;
 use crate::root::{abs, within};
 use crate::{Money, Periodicity, Rate, TvmError};
 
@@ -249,6 +251,106 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     }
 }
 
+/// The modified internal rate of return — a transcendental cashflow operation, so
+/// behind the `std` / `libm` features (ADR-0026), unlike the arithmetic-only
+/// NPV/NFV/IRR above.
+#[cfg(any(feature = "std", feature = "libm"))]
+impl<P: Periodicity> Cashflows<'_, P> {
+    /// The **modified** internal rate of return: the per-period rate at which the
+    /// present value of the series' outflows grows to the future value of its
+    /// inflows over the series' life.
+    ///
+    /// Unlike [`internal_rate_of_return`](Self::internal_rate_of_return), MIRR is
+    /// unique. It discounts the **outflows** (negative cashflows) back to period
+    /// `0` at `finance_rate`, compounds the **inflows** (positive cashflows)
+    /// forward to the final period at `reinvestment_rate`, and returns the single
+    /// rate equating the two: `MIRR = (TVᵢₙ / −PVₒᵤₜ)^(1/N) − 1` for a series
+    /// spanning `N` periods (the index of its last cashflow). This resolves the
+    /// multiple-root ambiguity a non-conventional series gives plain IRR
+    /// (`docs/adr/0020-robust-irr-newton-with-bisection-fallback.md`), at the cost
+    /// of two explicit rate assumptions instead of none.
+    ///
+    /// The two accumulations are arithmetic-only, but the terminal `N`-th root
+    /// needs `powf`, which is why this operation is feature-gated (ADR-0026). All
+    /// three rates share the periodicity `P`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use time_value::{Cashflows, Money, Monthly, Rate};
+    ///
+    /// // Pay 1000 now and 500 next month, then receive 800 and 900.
+    /// let flows = [
+    ///     Money::new(-1000.0)?,
+    ///     Money::new(-500.0)?,
+    ///     Money::new(800.0)?,
+    ///     Money::new(900.0)?,
+    /// ];
+    /// let project = Cashflows::<Monthly>::new(&flows);
+    ///
+    /// let mirr = project.modified_internal_rate_of_return(
+    ///     Rate::<Monthly>::new(0.10)?, // finance rate for the outflows
+    ///     Rate::<Monthly>::new(0.12)?, // reinvestment rate for the inflows
+    /// )?;
+    /// assert!((mirr.value() - 0.072819).abs() < 1e-5);
+    /// # Ok::<(), time_value::TvmError>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// - [`TvmError::EmptyCashflows`] if the series is empty.
+    /// - [`TvmError::NonFiniteResult`] if the series has fewer than two cashflows
+    ///   (so `N = 0`: no span to annualise over), has no outflows to discount (a
+    ///   zero present value to grow from), or overflows on extreme magnitudes.
+    /// - [`TvmError::RateOutOfRange`] if the series has no inflows — the terminal
+    ///   value is zero, so the implied rate is `−100%`.
+    pub fn modified_internal_rate_of_return(
+        self,
+        finance_rate: Rate<P>,
+        reinvestment_rate: Rate<P>,
+    ) -> Result<Rate<P>, TvmError> {
+        if self.flows.is_empty() {
+            return Err(TvmError::EmptyCashflows);
+        }
+        if self.flows.len() < 2 {
+            // A single cashflow spans no periods, so there is nothing to annualise.
+            return Err(TvmError::NonFiniteResult);
+        }
+
+        let finance_discount = 1.0 / (1.0 + finance_rate.value());
+        let reinvest_growth = 1.0 + reinvestment_rate.value();
+        let reinvest_discount = 1.0 / reinvest_growth;
+
+        // Present value of the outflows at period 0 (finance rate), and the inflows
+        // discounted to period 0 at the reinvestment rate — compounded up to the
+        // final period below. Factors run alongside a float period counter, so no
+        // `usize as f64` cast is needed.
+        let mut present_outflows = 0.0; // ≤ 0
+        let mut discounted_inflows = 0.0; // Σ inflow · reinvest_growth⁻ᵗ
+        let mut finance_factor = 1.0; // finance_discount ᵗ
+        let mut reinvest_factor = 1.0; // reinvest_discount ᵗ
+        let mut periods = 0.0;
+        for cf in self.flows {
+            let amount = cf.value();
+            if amount < 0.0 {
+                present_outflows += amount * finance_factor;
+            } else if amount > 0.0 {
+                discounted_inflows += amount * reinvest_factor;
+            }
+            finance_factor *= finance_discount;
+            reinvest_factor *= reinvest_discount;
+            periods += 1.0;
+        }
+        let n = periods - 1.0; // index of the last cashflow, ≥ 1 here
+
+        // Compound the inflows forward to period n, then take the n-th root of the
+        // growth from the outflows' present value to the inflows' terminal value.
+        let terminal_inflows = discounted_inflows * powf(reinvest_growth, n);
+        let growth = terminal_inflows / -present_outflows;
+        Rate::from_operation(powf(growth, 1.0 / n) - 1.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::root::within;
@@ -404,5 +506,88 @@ mod tests {
 
         let empty: [Money; 0] = [];
         assert!(Cashflows::<Monthly>::new(&empty).is_empty());
+    }
+
+    #[cfg(any(feature = "std", feature = "libm"))]
+    mod mirr {
+        use super::{approx, Cashflows, Money, Monthly, Rate, TvmError};
+
+        fn rate(r: f64) -> Rate<Monthly> {
+            Rate::<Monthly>::new(r).unwrap()
+        }
+
+        fn series(values: &[f64]) -> [Money; 4] {
+            assert_eq!(values.len(), 4);
+            [
+                Money::new(values[0]).unwrap(),
+                Money::new(values[1]).unwrap(),
+                Money::new(values[2]).unwrap(),
+                Money::new(values[3]).unwrap(),
+            ]
+        }
+
+        #[test]
+        fn matches_the_manual_formula() {
+            // Outflows -1000 (t0) and -500 (t1) discounted at 10% -> PV -1454.5454;
+            // inflows 800 (t2) and 900 (t3) compounded to t3 at 12% -> TV 1796;
+            // MIRR = (1796 / 1454.5454)^(1/3) - 1 = 0.0728187…
+            let flows = series(&[-1000.0, -500.0, 800.0, 900.0]);
+            let mirr = Cashflows::<Monthly>::new(&flows)
+                .modified_internal_rate_of_return(rate(0.10), rate(0.12))
+                .unwrap();
+            assert!(approx(mirr.value(), 0.072_818_724_6));
+        }
+
+        #[test]
+        fn equal_rates_and_a_single_outflow() {
+            // One outflow at t0, so the finance rate is inert; 500 each at t1..t3
+            // compounded at 10% to t3 gives TV 1655, MIRR = 1.655^(1/3) - 1.
+            let flows = series(&[-1000.0, 500.0, 500.0, 500.0]);
+            let mirr = Cashflows::<Monthly>::new(&flows)
+                .modified_internal_rate_of_return(rate(0.10), rate(0.10))
+                .unwrap();
+            assert!(approx(mirr.value(), 0.182_858_148_6));
+        }
+
+        #[test]
+        fn empty_series_errors() {
+            let empty: [Money; 0] = [];
+            assert_eq!(
+                Cashflows::<Monthly>::new(&empty)
+                    .modified_internal_rate_of_return(rate(0.10), rate(0.10)),
+                Err(TvmError::EmptyCashflows)
+            );
+        }
+
+        #[test]
+        fn single_cashflow_has_no_span() {
+            let flows = [Money::new(-1000.0).unwrap()];
+            assert_eq!(
+                Cashflows::<Monthly>::new(&flows)
+                    .modified_internal_rate_of_return(rate(0.10), rate(0.10)),
+                Err(TvmError::NonFiniteResult)
+            );
+        }
+
+        #[test]
+        fn no_outflows_has_no_present_value_to_grow_from() {
+            let flows = series(&[1000.0, 500.0, 500.0, 500.0]);
+            assert_eq!(
+                Cashflows::<Monthly>::new(&flows)
+                    .modified_internal_rate_of_return(rate(0.10), rate(0.10)),
+                Err(TvmError::NonFiniteResult)
+            );
+        }
+
+        #[test]
+        fn no_inflows_is_a_total_loss() {
+            // No positive cashflow, so the terminal value is 0 and MIRR = -100%.
+            let flows = series(&[-1000.0, -500.0, -500.0, -500.0]);
+            assert_eq!(
+                Cashflows::<Monthly>::new(&flows)
+                    .modified_internal_rate_of_return(rate(0.10), rate(0.10)),
+                Err(TvmError::RateOutOfRange)
+            );
+        }
     }
 }
