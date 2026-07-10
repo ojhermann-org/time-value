@@ -31,15 +31,18 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0010](0010-cli-surface.md) | CLI surface | Accepted |
 | [0011](0011-mcp-server.md) | MCP server | Accepted |
 | [0012](0012-ci-and-release-automation.md) | CI and release automation | Accepted |
-| [0013](0013-core-api-values-and-discrete-operations.md) | Core API — values, cashflows & discrete operations | Accepted (amended by 0020, 0021) |
-| [0014](0014-transcendental-single-sum-operations.md) | Transcendental operations behind `std`/`libm` — single-sum value | Accepted (amended by 0019, 0021) |
-| [0015](0015-annuities.md) | Annuities — convention, the `r → 0` limit, and a fallible payment | Accepted (amended by 0021) |
+| [0013](0013-core-api-values-and-discrete-operations.md) | Core API — values, cashflows & discrete operations | Accepted (amended by 0020, 0021, 0026) |
+| [0014](0014-transcendental-single-sum-operations.md) | Transcendental operations behind `std`/`libm` — single-sum value | Accepted (amended by 0019, 0021, 0025) |
+| [0015](0015-annuities.md) | Annuities — convention, the `r → 0` limit, and a fallible payment | Accepted (amended by 0021, 0025; extended 2026-07-10 — annuity-due & perpetuity) |
 | [0016](0016-msrv-and-toolchain-bump.md) | Toolchain & MSRV bump to 1.88 for the MCP server | Accepted (amended by 0017) |
 | [0017](0017-per-crate-msrv-core-1.85.md) | Per-crate MSRV — the core keeps 1.85, verified separately | Accepted |
 | [0018](0018-kebab-case-binary-crate-names.md) | Kebab-case binary crate names | Accepted |
 | [0019](0019-1.0-public-api-decisions.md) | 1.0 public API decisions | Accepted (§2 superseded by 0021) |
-| [0020](0020-robust-irr-newton-with-bisection-fallback.md) | Robust IRR — Newton with a bisection fallback | Accepted (amended by 0021) |
+| [0020](0020-robust-irr-newton-with-bisection-fallback.md) | Robust IRR — Newton with a bisection fallback | Accepted (amended by 0021, 0025) |
 | [0021](0021-fallible-operations-on-non-finite-results.md) | Operations are fallible when their result can be non-finite | Accepted (amended by 0023) |
 | [0022](0022-core-first-sequencing-before-the-first-release.md) | Core-first sequencing before the first release | Accepted |
 | [0023](0023-money-arithmetic-surface.md) | The `Money` arithmetic surface — `Neg` and `try_*` | Accepted |
 | [0024](0024-rate-conversions-effective-and-nominal.md) | Rate conversions — effective between periodicities, nominal as a quote | Accepted |
+| [0025](0025-solve-for-periods-and-rate.md) | Solve for periods (NPER) and rate (RATE) | Accepted |
+| [0026](0026-modified-internal-rate-of-return.md) | Modified internal rate of return (MIRR) | Accepted |
+| [0027](0027-amortization-schedule.md) | Amortization schedule as a lazy iterator | Accepted |

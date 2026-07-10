@@ -405,7 +405,7 @@ fn solve_rate<P: Periodicity>(
 /// These mirror the ordinary (end-of-period) functions in the parent module —
 /// same signatures, same `r → 0` and degenerate-`n` handling — but each factor is
 /// scaled by `(1 + r)`, because every payment is brought forward one period.
-/// `PV_due = PV · (1 + r)`, `FV_due = FV · (1 + r)`, and [`payment`](self::payment)
+/// `PV_due = PV · (1 + r)`, `FV_due = FV · (1 + r)`, and [`payment`](due::payment)
 /// inverts `present_value` here just as the ordinary `payment` inverts the
 /// ordinary `present_value` (`docs/adr/0015-annuities.md`).
 pub mod due {
