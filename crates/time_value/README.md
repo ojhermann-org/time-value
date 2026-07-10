@@ -13,7 +13,9 @@ ergonomic. `#![no_std]` and dependency-free by default.
 Values are validated newtypes, and **periodicity is part of the type**:
 
 - `Money` — an always-finite monetary amount (cashflows are signed: outflow
-  negative, inflow positive).
+  negative, inflow positive). Negate it with `-money`; add, subtract and scale it
+  with the fallible `try_add` / `try_sub` / `try_mul` / `try_div`, which return
+  an error rather than an infinity.
 - `Rate<P>` — a per-period rate (finite, greater than −100%) tagged with a
   `Periodicity` marker `P` (`Annual`, `SemiAnnual`, `Quarterly`, `Monthly`,
   `Weekly`, `Daily`).

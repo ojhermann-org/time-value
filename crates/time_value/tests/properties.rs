@@ -4,7 +4,8 @@
 //! rather than a handful of worked examples: present and future value invert
 //! each other, net present value is monotone in the discount rate and collapses
 //! to the plain sum at a zero rate, the internal rate of return zeroes the net
-//! present value, and the annuity payment inverts the annuity present value.
+//! present value, the annuity payment inverts the annuity present value, and
+//! `Money`'s arithmetic obeys the usual algebraic laws.
 //!
 //! `proptest` is a dev-dependency only, so it never reaches the published
 //! crate's dependency tree (the zero-dependency promise is about distribution,
@@ -88,6 +89,36 @@ proptest! {
             0.0,
             1e-6 * total
         ));
+    }
+
+    /// Negation is an involution: flipping a cashflow's sign twice is a no-op.
+    /// Exact, not approximate — IEEE negation only toggles the sign bit.
+    #[test]
+    fn negating_money_twice_is_the_identity(amount in -1e12f64..1e12) {
+        let money = Money::new(amount).unwrap();
+        prop_assert_eq!(-(-money), money);
+    }
+
+    /// Subtraction is addition of the negation (ADR-0023). Bounded well inside
+    /// `f64` range, so neither form can overflow and both must be `Ok`.
+    #[test]
+    fn subtracting_money_is_adding_its_negation(
+        a in -1e12f64..1e12,
+        b in -1e12f64..1e12,
+    ) {
+        let (a, b) = (Money::new(a).unwrap(), Money::new(b).unwrap());
+        prop_assert_eq!(a.try_sub(b).unwrap(), a.try_add(-b).unwrap());
+    }
+
+    /// Scaling then unscaling by the same non-tiny factor recovers the amount.
+    #[test]
+    fn scaling_money_then_dividing_recovers_it(
+        amount in -1e9f64..1e9,
+        factor in 0.01f64..100.0,
+    ) {
+        let money = Money::new(amount).unwrap();
+        let recovered = money.try_mul(factor).unwrap().try_div(factor).unwrap();
+        prop_assert!(close(recovered.value(), amount, 1e-6 + 1e-12 * amount.abs()));
     }
 }
 
