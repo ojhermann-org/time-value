@@ -1,6 +1,7 @@
 //! [`Money`] — a validated monetary amount.
 
 use core::fmt;
+use core::ops::Neg;
 
 use crate::TvmError;
 
@@ -9,14 +10,36 @@ use crate::TvmError;
 /// A plain newtype over `f64`; currency is intentionally **not** type-tagged in
 /// the `1.0` line (see `docs/adr/0005-domain-modelling-and-strong-typing.md`).
 ///
-/// The [`new`](Money::new) constructor rejects `NaN` and the infinities, so a
-/// `Money` obtained from `new` is finite. The TVM *operations* (present/future
-/// value, NPV, …) assume finite inputs and do not re-validate their result: with
-/// extreme inputs the underlying `f64` arithmetic can overflow, so the returned
-/// `Money` may be non-finite. Call `money.value().is_finite()` when you feed in
-/// magnitudes that might overflow.
+/// Every `Money` is finite. The [`new`](Money::new) constructor rejects `NaN`
+/// and the infinities, and every operation that could overflow — the TVM
+/// operations and the arithmetic below — returns a `Result` whose `Err` is
+/// [`TvmError::NonFiniteResult`] rather than a non-finite `Money`
+/// (`docs/adr/0021-fallible-operations-on-non-finite-results.md`).
 ///
 /// Cashflows are signed — an outflow is negative, an inflow positive.
+///
+/// # Arithmetic
+///
+/// Negation is a [`Neg`] operator: negating a finite amount is always finite, so
+/// it cannot fail. Addition, subtraction and scaling *can* leave `f64` range, so
+/// they are fallible [`try_add`](Self::try_add), [`try_sub`](Self::try_sub),
+/// [`try_mul`](Self::try_mul) and [`try_div`](Self::try_div) methods rather than
+/// operators — an operator cannot return a `Result`, and silently yielding an
+/// infinity is the foot-gun this crate exists to avoid
+/// (`docs/adr/0023-money-arithmetic-surface.md`).
+///
+/// ```
+/// use time_value::Money;
+///
+/// let fee = Money::new(25.0)?;
+/// let refund = -fee; // an inflow becomes an outflow
+/// assert_eq!(refund.value(), -25.0);
+///
+/// let total = fee.try_add(Money::new(75.0)?)?;
+/// let doubled = total.try_mul(2.0)?;
+/// assert_eq!(doubled.value(), 200.0);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Money(f64);
 
@@ -57,6 +80,57 @@ impl Money {
             Err(TvmError::NonFiniteResult)
         }
     }
+
+    /// Adds `rhs`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TvmError::NonFiniteResult`] if the sum overflows `f64`.
+    pub fn try_add(self, rhs: Self) -> Result<Self, TvmError> {
+        Self::from_operation(self.0 + rhs.0)
+    }
+
+    /// Subtracts `rhs`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TvmError::NonFiniteResult`] if the difference overflows `f64`.
+    pub fn try_sub(self, rhs: Self) -> Result<Self, TvmError> {
+        Self::from_operation(self.0 - rhs.0)
+    }
+
+    /// Scales by `factor` — e.g. `payment.try_mul(12.0)` for an annual total.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TvmError::NonFiniteResult`] if the product is not finite: the
+    /// multiplication overflowed, or `factor` is itself `NaN` or infinite.
+    pub fn try_mul(self, factor: f64) -> Result<Self, TvmError> {
+        Self::from_operation(self.0 * factor)
+    }
+
+    /// Divides by `divisor` — e.g. `total.try_div(12.0)` for a monthly share.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TvmError::NonFiniteResult`] if the quotient is not finite —
+    /// notably when `divisor` is zero or `NaN`, or when dividing a large amount
+    /// by a tiny one overflows. An *infinite* divisor is not an error: the
+    /// quotient is zero, which is finite.
+    pub fn try_div(self, divisor: f64) -> Result<Self, TvmError> {
+        Self::from_operation(self.0 / divisor)
+    }
+}
+
+/// Flips the sign — an inflow becomes an outflow, and vice versa.
+///
+/// Infallible: the negation of a finite amount is finite (ADR-0021).
+impl Neg for Money {
+    type Output = Self;
+
+    fn neg(self) -> Self {
+        Self(-self.0)
+    }
 }
 
 impl fmt::Display for Money {
@@ -88,5 +162,72 @@ mod tests {
             Money::new(f64::NEG_INFINITY),
             Err(TvmError::NonFiniteAmount)
         );
+    }
+
+    /// The largest finite `f64`; doubling it overflows.
+    fn huge() -> Money {
+        Money::new(f64::MAX).unwrap()
+    }
+
+    #[test]
+    fn negation_flips_the_sign() {
+        assert_eq!((-Money::new(42.5).unwrap()).value(), -42.5);
+        assert_eq!((-Money::new(-42.5).unwrap()).value(), 42.5);
+        assert_eq!(-(-huge()), huge());
+    }
+
+    #[test]
+    fn adds_and_subtracts() {
+        let a = Money::new(100.0).unwrap();
+        let b = Money::new(25.0).unwrap();
+        assert_eq!(a.try_add(b).unwrap().value(), 125.0);
+        assert_eq!(a.try_sub(b).unwrap().value(), 75.0);
+        assert_eq!(b.try_sub(a).unwrap().value(), -75.0);
+    }
+
+    #[test]
+    fn add_and_sub_report_overflow() {
+        assert_eq!(huge().try_add(huge()), Err(TvmError::NonFiniteResult));
+        assert_eq!(huge().try_sub(-huge()), Err(TvmError::NonFiniteResult));
+    }
+
+    #[test]
+    fn scales_by_a_factor() {
+        let payment = Money::new(250.0).unwrap();
+        assert_eq!(payment.try_mul(12.0).unwrap().value(), 3000.0);
+        assert_eq!(payment.try_mul(0.0).unwrap().value(), 0.0);
+        assert_eq!(payment.try_mul(-1.0).unwrap().value(), -250.0);
+    }
+
+    #[test]
+    fn mul_rejects_a_non_finite_result() {
+        assert_eq!(huge().try_mul(2.0), Err(TvmError::NonFiniteResult));
+        assert_eq!(
+            Money::new(1.0).unwrap().try_mul(f64::INFINITY),
+            Err(TvmError::NonFiniteResult)
+        );
+        assert_eq!(
+            Money::new(1.0).unwrap().try_mul(f64::NAN),
+            Err(TvmError::NonFiniteResult)
+        );
+    }
+
+    #[test]
+    fn divides_by_a_divisor() {
+        let total = Money::new(3000.0).unwrap();
+        assert_eq!(total.try_div(12.0).unwrap().value(), 250.0);
+        assert_eq!(total.try_div(-12.0).unwrap().value(), -250.0);
+        // An infinite divisor yields zero, which is finite — not an error.
+        assert_eq!(total.try_div(f64::INFINITY).unwrap().value(), 0.0);
+    }
+
+    #[test]
+    fn div_rejects_a_non_finite_result() {
+        let total = Money::new(3000.0).unwrap();
+        assert_eq!(total.try_div(0.0), Err(TvmError::NonFiniteResult));
+        assert_eq!(total.try_div(f64::NAN), Err(TvmError::NonFiniteResult));
+        // 0 / 0 is NaN, not zero.
+        assert_eq!(Money::ZERO.try_div(0.0), Err(TvmError::NonFiniteResult));
+        assert_eq!(huge().try_div(0.5), Err(TvmError::NonFiniteResult));
     }
 }

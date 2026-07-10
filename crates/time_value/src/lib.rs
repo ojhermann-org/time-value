@@ -12,9 +12,9 @@
 //!
 //! ## Model
 //!
-//! - [`Money`] is a validated monetary amount — finite on construction (see its
-//!   docs for how the operations treat overflow); cashflows are signed (outflow
-//!   negative, inflow positive).
+//! - [`Money`] is a validated monetary amount — always finite, because every
+//!   operation that could overflow returns a `Result` instead; cashflows are
+//!   signed (outflow negative, inflow positive).
 //! - [`Rate<P>`] is a per-period interest rate tagged with a [`Periodicity`]
 //!   marker (`P` — e.g. [`Monthly`], [`Annual`]). The tag is zero-sized.
 //! - [`Cashflows<P>`] is a periodicity-tagged series of cashflows at consecutive
