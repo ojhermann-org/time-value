@@ -291,4 +291,44 @@ proptest! {
         let recovered = annuity::rate::<Monthly>(n, payment, present).unwrap();
         prop_assert!(close(1.0 + recovered.value(), 1.0 + rate, 1e-6 * (1.0 + rate)));
     }
+
+    /// A conventional *dated* series — an outflow now, then inflows on strictly
+    /// later, irregularly spaced dates that more than repay it — has an XIRR, and
+    /// discounting at it zeroes the XNPV (ADR-0029). The dated analogue of
+    /// `irr_zeroes_the_npv`.
+    ///
+    /// The regime is bounded to keep the *annualised* rate well-conditioned: each
+    /// gap is at least a quarter-year and the outflow is at least 30% of the
+    /// inflows. Both matter because annualising a large sub-period return over a
+    /// short horizon explodes — an inflow a fortnight after a tiny outflow implies
+    /// an astronomical annual rate that no finite solver can bracket. That is
+    /// degenerate annualisation, not a solver fault; the realistic band is tested.
+    #[test]
+    fn xirr_zeroes_the_xnpv(
+        spec in prop::collection::vec((1.0f64..1e3, 0.25f64..2.0), 1..=8),
+        fraction in 0.3f64..0.95,
+    ) {
+        use time_value::{DatedCashflow, DatedCashflows};
+
+        // Each (inflow, gap): cumulative gaps give strictly increasing year-offsets
+        // after the reference outflow at t = 0.
+        let total: f64 = spec.iter().map(|&(a, _)| a).sum();
+        let outflow = total * fraction; // strictly below the inflows, so a root exists
+
+        let mut flows =
+            vec![DatedCashflow::new(0.0, Money::new(-outflow).unwrap()).unwrap()];
+        let mut t = 0.0;
+        for (inflow, gap) in spec {
+            t += gap;
+            flows.push(DatedCashflow::new(t, Money::new(inflow).unwrap()).unwrap());
+        }
+        let series = DatedCashflows::new(&flows);
+
+        let irr = series.internal_rate_of_return().unwrap();
+        prop_assert!(close(
+            series.net_present_value(irr).unwrap().value(),
+            0.0,
+            1e-6 * total
+        ));
+    }
 }

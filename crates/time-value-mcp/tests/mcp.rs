@@ -60,6 +60,57 @@ fn irr_tool_solves_the_series() {
 }
 
 #[test]
+fn xirr_tool_solves_dated_flows() {
+    // Microsoft's XIRR example over ISO dates -> ~0.3734.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"xirr","arguments":{"flows":[{"date":"2008-01-01","amount":-10000},{"date":"2008-03-01","amount":2750},{"date":"2008-10-30","amount":4250},{"date":"2009-02-15","amount":3250},{"date":"2009-04-01","amount":2750}]}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0.373"));
+}
+
+#[test]
+fn xnpv_tool_lists_and_computes() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"xnpv","arguments":{"rate":0.10,"flows":[{"date":"2020-01-01","amount":-100},{"date":"2021-01-01","amount":110}]}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        // The new tools are advertised alongside the originals.
+        .stdout(predicate::str::contains("mirr"))
+        .stdout(predicate::str::contains("xnpv"))
+        .stdout(predicate::str::contains("xirr"));
+}
+
+#[test]
+fn an_invalid_date_is_an_error() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"xirr","arguments":{"flows":[{"date":"2020-02-30","amount":-100},{"date":"2021-01-01","amount":110}]}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("invalid date"));
+}
+
+#[test]
 fn an_overflowing_result_is_an_error_not_null() {
     // Previously this returned `{"future_value":null}` with isError:false — a
     // silent non-answer. Now it is a proper error (ADR-0021).

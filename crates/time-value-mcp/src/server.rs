@@ -13,21 +13,27 @@ use rmcp::{
     model::{CallToolResult, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, ErrorData, ServerHandler,
 };
-use time_value::{annuity, single_sum, Cashflows, Money, Monthly, Period, Rate, TvmError};
+use time_value::{
+    annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money, Monthly, Period,
+    Rate, TvmError,
+};
 
 use crate::params::{
-    AnnuityPaymentInput, AnnuityValueInput, FutureValueInput, IrrInput, PresentValueInput,
-    SeriesInput,
+    AnnuityPaymentInput, AnnuityValueInput, DatedFlow, DatedIrrInput, DatedSeriesInput,
+    FutureValueInput, IrrInput, MirrInput, PresentValueInput, SeriesInput,
 };
 
 /// Told to clients on initialise.
 const INSTRUCTIONS: &str = "\
 Time-value-of-money calculations. Tools: `npv` and `nfv` (net present / future \
 value of a cashflow series at a per-period rate); `irr` (internal rate of return \
-of a series); `present_value` and `future_value` (a single sum over a number of \
-periods); `annuity_present_value`, `annuity_future_value`, and `annuity_payment` \
-(ordinary, end-of-period annuities). Rates are per period; cashflows are signed \
-(outflow negative). Source: https://github.com/ojhermann-org/time-value";
+of a series); `mirr` (modified IRR, with finance and reinvestment rates); `xnpv` \
+and `xirr` (net present value / internal rate of return of cashflows on irregular \
+ISO dates, at an annual rate); `present_value` and `future_value` (a single sum \
+over a number of periods); `annuity_present_value`, `annuity_future_value`, and \
+`annuity_payment` (ordinary, end-of-period annuities). Rates are per period \
+(annual for `xnpv`/`xirr`); cashflows are signed (outflow negative). Source: \
+https://github.com/ojhermann-org/time-value";
 
 /// The MCP server. Stateless: the operations are pure functions of their inputs.
 #[derive(Clone)]
@@ -83,6 +89,52 @@ impl TimeValueServer {
             .internal_rate_of_return_from(input.guess)
             .map_err(tvm)?;
         Ok(result("irr", irr.value()))
+    }
+
+    #[tool(
+        name = "mirr",
+        description = "Modified internal rate of return (per period): discounts outflows at a finance rate and compounds inflows at a reinvestment rate, then equates the two over the series' life."
+    )]
+    fn mirr(&self, Parameters(input): Parameters<MirrInput>) -> Result<CallToolResult, ErrorData> {
+        let flows = cashflows(&input.cashflows)?;
+        let series = Cashflows::<Monthly>::new(&flows);
+        let mirr = series
+            .modified_internal_rate_of_return(rate(input.finance)?, rate(input.reinvest)?)
+            .map_err(tvm)?;
+        Ok(result("mirr", mirr.value()))
+    }
+
+    #[tool(
+        name = "xnpv",
+        description = "Net present value of cashflows on irregular dates (XNPV), discounted at an annual rate by the year-fraction (ACT/365) from the first date."
+    )]
+    fn xnpv(
+        &self,
+        Parameters(input): Parameters<DatedSeriesInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let flows = dated_flows(&input.flows)?;
+        let series = DatedCashflows::new(&flows);
+        let value = series
+            .net_present_value(annual_rate(input.rate)?)
+            .map_err(tvm)?
+            .value();
+        Ok(result("xnpv", value))
+    }
+
+    #[tool(
+        name = "xirr",
+        description = "Internal rate of return of cashflows on irregular dates (XIRR), as an annual rate: the rate at which their XNPV (ACT/365 from the first date) is zero."
+    )]
+    fn xirr(
+        &self,
+        Parameters(input): Parameters<DatedIrrInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let flows = dated_flows(&input.flows)?;
+        let series = DatedCashflows::new(&flows);
+        let irr = series
+            .internal_rate_of_return_from(input.guess)
+            .map_err(tvm)?;
+        Ok(result("xirr", irr.value()))
     }
 
     #[tool(
@@ -195,6 +247,11 @@ fn rate(value: f64) -> Result<Rate<Monthly>, ErrorData> {
     Rate::new(value).map_err(tvm)
 }
 
+/// The dated `xnpv`/`xirr` discount is intrinsically annual (ADR-0029).
+fn annual_rate(value: f64) -> Result<Rate<Annual>, ErrorData> {
+    Rate::new(value).map_err(tvm)
+}
+
 fn period(value: f64) -> Result<Period, ErrorData> {
     Period::new(value).map_err(tvm)
 }
@@ -205,6 +262,73 @@ fn money(value: f64) -> Result<Money, ErrorData> {
 
 fn cashflows(values: &[f64]) -> Result<Vec<Money>, ErrorData> {
     values.iter().copied().map(money).collect()
+}
+
+// ---- Dated flows (XNPV/XIRR): ISO dates → ACT/365 year-offsets ----
+//
+// The core takes year-offsets, not a date type (ADR-0029); the server accepts ISO
+// `YYYY-MM-DD` dates and converts them with a self-contained ACT/365 day-count, so
+// no date dependency reaches the binary.
+
+/// Days since the epoch (proleptic Gregorian) via Howard Hinnant's
+/// days-from-civil algorithm. `month` is 1..=12, `day` valid for the month.
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let year_of_era = y - era * 400; // [0, 399]
+    let month_index = (month + 9) % 12; // Mar = 0 … Feb = 11
+    let day_of_year = (153 * month_index + 2) / 5 + day - 1; // [0, 365]
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    era * 146_097 + day_of_era - 719_468
+}
+
+fn is_leap_year(year: i64) -> bool {
+    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+fn days_in_month(year: i64, month: i64) -> i64 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+/// Parse an ISO `YYYY-MM-DD` date to a day number, mapping any malformed input to
+/// an MCP `invalid_params` error.
+fn parse_date(text: &str) -> Result<i64, ErrorData> {
+    let invalid =
+        || ErrorData::invalid_params(format!("invalid date `{text}` (expected YYYY-MM-DD)"), None);
+    let parts: Vec<&str> = text.split('-').collect();
+    if parts.len() != 3 {
+        return Err(invalid());
+    }
+    let year: i64 = parts[0].parse().map_err(|_| invalid())?;
+    let month: i64 = parts[1].parse().map_err(|_| invalid())?;
+    let day: i64 = parts[2].parse().map_err(|_| invalid())?;
+    if !(1..=12).contains(&month) || day < 1 || day > days_in_month(year, month) {
+        return Err(invalid());
+    }
+    Ok(days_from_civil(year, month, day))
+}
+
+/// Convert dated inputs to core [`DatedCashflow`]s, rebasing offsets to the first
+/// flow (ACT/365).
+fn dated_flows(flows: &[DatedFlow]) -> Result<Vec<DatedCashflow>, ErrorData> {
+    let mut out = Vec::with_capacity(flows.len());
+    let mut reference: Option<i64> = None;
+    for flow in flows {
+        let day = parse_date(&flow.date)?;
+        let reference = *reference.get_or_insert(day);
+        // Day-count differences for real calendar dates are far below 2^53, so
+        // this conversion is exact despite the lint's worst-case warning.
+        #[allow(clippy::cast_precision_loss)]
+        let offset_years = (day - reference) as f64 / 365.0;
+        out.push(DatedCashflow::new(offset_years, money(flow.amount)?).map_err(tvm)?);
+    }
+    Ok(out)
 }
 
 /// A single-field structured tool result, keyed by the operation.

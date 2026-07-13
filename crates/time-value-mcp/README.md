@@ -12,11 +12,15 @@ the core library stays synchronous.
 |------|--------|
 | `npv`, `nfv` | net present / future value of a cashflow series at a per-period rate |
 | `irr` | internal rate of return of a series |
+| `mirr` | modified internal rate of return (finance + reinvestment rates) |
+| `xnpv`, `xirr` | net present value / internal rate of return of cashflows on irregular ISO dates, at an annual rate |
 | `present_value`, `future_value` | a single sum over a number of periods |
 | `annuity_present_value`, `annuity_future_value`, `annuity_payment` | ordinary (end-of-period) annuities |
 
-Rates are per period; cashflows are signed (outflow negative). Each tool returns
-a one-field structured JSON result keyed by the operation.
+Rates are per period (annual for `xnpv`/`xirr`); cashflows are signed (outflow
+negative). `xnpv`/`xirr` take `{date, amount}` flows with ISO `YYYY-MM-DD` dates,
+discounted by year-fraction (ACT/365) from the first date. Each tool returns a
+one-field structured JSON result keyed by the operation.
 
 ## Install
 
