@@ -123,7 +123,7 @@ impl<'a> DatedCashflows<'a> {
     ///
     /// # Errors
     ///
-    /// [`TvmError::NonFiniteResult`] if the sum overflows to a non-finite value
+    /// [`TvmError::Overflow`] if the sum overflows to a non-finite value
     /// (ADR-0021).
     pub fn net_present_value(self, rate: Rate<Annual>) -> Result<Money, TvmError> {
         Money::from_operation(self.xnpv_at(rate.value()))

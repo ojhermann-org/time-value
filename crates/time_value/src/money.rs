@@ -11,10 +11,13 @@ use crate::TvmError;
 /// the `1.0` line (see `docs/adr/0005-domain-modelling-and-strong-typing.md`).
 ///
 /// Every `Money` is finite. The [`new`](Money::new) constructor rejects `NaN`
-/// and the infinities, and every operation that could overflow — the TVM
-/// operations and the arithmetic below — returns a `Result` whose `Err` is
-/// [`TvmError::NonFiniteResult`] rather than a non-finite `Money`
-/// (`docs/adr/0021-fallible-operations-on-non-finite-results.md`).
+/// and the infinities, and every operation that could leave the finite range —
+/// the TVM operations and the arithmetic below — returns a `Result` whose `Err`
+/// is [`TvmError::Overflow`] (a real result too large for `f64`), or
+/// [`TvmError::Undefined`] for a degenerate case such as division by zero,
+/// rather than a non-finite `Money`
+/// (`docs/adr/0021-fallible-operations-on-non-finite-results.md`,
+/// `docs/adr/0031-split-non-finite-result-into-overflow-and-undefined.md`).
 ///
 /// Cashflows are signed — an outflow is negative, an inflow positive.
 ///
@@ -69,15 +72,18 @@ impl Money {
 
     /// Constructs from the `f64` result of an operation, validating finiteness.
     ///
-    /// A non-finite result — an overflow, or a mathematically undefined case such
-    /// as an annuity payment over zero periods — is [`TvmError::NonFiniteResult`],
-    /// distinct from the [`TvmError::NonFiniteAmount`] that [`new`](Self::new)
-    /// returns for a non-finite value supplied by a *caller* (ADR-0021).
+    /// This is the overflow funnel: a non-finite result reaching here is a real
+    /// value that exceeded the representable `f64` range, so it is
+    /// [`TvmError::Overflow`]. Mathematically undefined cases (e.g. an annuity
+    /// payment over zero periods) are guarded at their call sites and return
+    /// [`TvmError::Undefined`] before reaching this point (ADR-0021, ADR-0031).
+    /// Both are distinct from the [`TvmError::NonFiniteAmount`] that
+    /// [`new`](Self::new) returns for a non-finite value supplied by a *caller*.
     pub(crate) fn from_operation(amount: f64) -> Result<Self, TvmError> {
         if amount.is_finite() {
             Ok(Self(amount))
         } else {
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Overflow)
         }
     }
 
@@ -85,7 +91,7 @@ impl Money {
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::NonFiniteResult`] if the sum overflows `f64`.
+    /// Returns [`TvmError::Overflow`] if the sum leaves the finite `f64` range.
     pub fn try_add(self, rhs: Self) -> Result<Self, TvmError> {
         Self::from_operation(self.0 + rhs.0)
     }
@@ -94,7 +100,8 @@ impl Money {
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::NonFiniteResult`] if the difference overflows `f64`.
+    /// Returns [`TvmError::Overflow`] if the difference leaves the finite `f64`
+    /// range.
     pub fn try_sub(self, rhs: Self) -> Result<Self, TvmError> {
         Self::from_operation(self.0 - rhs.0)
     }
@@ -103,9 +110,13 @@ impl Money {
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::NonFiniteResult`] if the product is not finite: the
-    /// multiplication overflowed, or `factor` is itself `NaN` or infinite.
+    /// Returns [`TvmError::Undefined`] if `factor` is itself `NaN` or infinite (no
+    /// finite product is defined), or [`TvmError::Overflow`] if a finite factor
+    /// pushes the product past the representable range.
     pub fn try_mul(self, factor: f64) -> Result<Self, TvmError> {
+        if !factor.is_finite() {
+            return Err(TvmError::Undefined);
+        }
         Self::from_operation(self.0 * factor)
     }
 
@@ -113,11 +124,14 @@ impl Money {
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::NonFiniteResult`] if the quotient is not finite —
-    /// notably when `divisor` is zero or `NaN`, or when dividing a large amount
-    /// by a tiny one overflows. An *infinite* divisor is not an error: the
-    /// quotient is zero, which is finite.
+    /// Returns [`TvmError::Undefined`] if `divisor` is zero or `NaN` (the quotient
+    /// has no defined value), or [`TvmError::Overflow`] if dividing a large amount
+    /// by a tiny one leaves the finite range. An *infinite* divisor is not an
+    /// error: the quotient is zero, which is finite.
     pub fn try_div(self, divisor: f64) -> Result<Self, TvmError> {
+        if divisor == 0.0 || divisor.is_nan() {
+            return Err(TvmError::Undefined);
+        }
         Self::from_operation(self.0 / divisor)
     }
 }
@@ -187,8 +201,8 @@ mod tests {
 
     #[test]
     fn add_and_sub_report_overflow() {
-        assert_eq!(huge().try_add(huge()), Err(TvmError::NonFiniteResult));
-        assert_eq!(huge().try_sub(-huge()), Err(TvmError::NonFiniteResult));
+        assert_eq!(huge().try_add(huge()), Err(TvmError::Overflow));
+        assert_eq!(huge().try_sub(-huge()), Err(TvmError::Overflow));
     }
 
     #[test]
@@ -201,14 +215,16 @@ mod tests {
 
     #[test]
     fn mul_rejects_a_non_finite_result() {
-        assert_eq!(huge().try_mul(2.0), Err(TvmError::NonFiniteResult));
+        // A finite factor that overflows the range is an Overflow; a non-finite
+        // factor has no defined product, so it is Undefined (ADR-0031).
+        assert_eq!(huge().try_mul(2.0), Err(TvmError::Overflow));
         assert_eq!(
             Money::new(1.0).unwrap().try_mul(f64::INFINITY),
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Undefined)
         );
         assert_eq!(
             Money::new(1.0).unwrap().try_mul(f64::NAN),
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Undefined)
         );
     }
 
@@ -224,10 +240,12 @@ mod tests {
     #[test]
     fn div_rejects_a_non_finite_result() {
         let total = Money::new(3000.0).unwrap();
-        assert_eq!(total.try_div(0.0), Err(TvmError::NonFiniteResult));
-        assert_eq!(total.try_div(f64::NAN), Err(TvmError::NonFiniteResult));
-        // 0 / 0 is NaN, not zero.
-        assert_eq!(Money::ZERO.try_div(0.0), Err(TvmError::NonFiniteResult));
-        assert_eq!(huge().try_div(0.5), Err(TvmError::NonFiniteResult));
+        // Division by zero or NaN is undefined; a finite divisor that overflows
+        // the range is an Overflow (ADR-0031).
+        assert_eq!(total.try_div(0.0), Err(TvmError::Undefined));
+        assert_eq!(total.try_div(f64::NAN), Err(TvmError::Undefined));
+        // 0 / 0 is undefined, not zero.
+        assert_eq!(Money::ZERO.try_div(0.0), Err(TvmError::Undefined));
+        assert_eq!(huge().try_div(0.5), Err(TvmError::Overflow));
     }
 }

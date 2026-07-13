@@ -89,7 +89,7 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     ///
     /// # Errors
     ///
-    /// [`TvmError::NonFiniteResult`] if the sum overflows to a non-finite value,
+    /// [`TvmError::Overflow`] if the sum overflows to a non-finite value,
     /// which needs cashflows near `f64::MAX` or a rate a hair above `−100%`
     /// (ADR-0021).
     pub fn net_present_value(self, rate: Rate<P>) -> Result<Money, TvmError> {
@@ -109,7 +109,7 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     ///
     /// # Errors
     ///
-    /// [`TvmError::NonFiniteResult`] if the compounded sum overflows to a
+    /// [`TvmError::Overflow`] if the compounded sum overflows to a
     /// non-finite value (ADR-0021).
     pub fn net_future_value(self, rate: Rate<P>) -> Result<Money, TvmError> {
         let growth = 1.0 + rate.value();
@@ -257,9 +257,11 @@ impl<P: Periodicity> Cashflows<'_, P> {
     /// # Errors
     ///
     /// - [`TvmError::EmptyCashflows`] if the series is empty.
-    /// - [`TvmError::NonFiniteResult`] if the series has fewer than two cashflows
-    ///   (so `N = 0`: no span to annualise over), has no outflows to discount (a
-    ///   zero present value to grow from), or overflows on extreme magnitudes.
+    /// - [`TvmError::Undefined`] if the series has fewer than two cashflows (so
+    ///   `N = 0`: no span to annualise over), or has no outflows to discount (a
+    ///   zero present value to grow from) — both are degenerate with no answer.
+    /// - [`TvmError::Overflow`] if the terminal value overflows on extreme
+    ///   magnitudes.
     /// - [`TvmError::RateOutOfRange`] if the series has no inflows — the terminal
     ///   value is zero, so the implied rate is `−100%`.
     pub fn modified_internal_rate_of_return(
@@ -272,7 +274,7 @@ impl<P: Periodicity> Cashflows<'_, P> {
         }
         if self.flows.len() < 2 {
             // A single cashflow spans no periods, so there is nothing to annualise.
-            return Err(TvmError::NonFiniteResult);
+            return Err(TvmError::Undefined);
         }
 
         let finance_discount = 1.0 / (1.0 + finance_rate.value());
@@ -300,6 +302,12 @@ impl<P: Periodicity> Cashflows<'_, P> {
             periods += 1.0;
         }
         let n = periods - 1.0; // index of the last cashflow, ≥ 1 here
+
+        if present_outflows == 0.0 {
+            // No outflows: there is no present value to grow from, so the
+            // annualised return is undefined rather than merely too large.
+            return Err(TvmError::Undefined);
+        }
 
         // Compound the inflows forward to period n, then take the n-th root of the
         // growth from the outflows' present value to the inflows' terminal value.
@@ -434,14 +442,8 @@ mod tests {
         let big = [Money::new(f64::MAX).unwrap(), Money::new(f64::MAX).unwrap()];
         let series = Cashflows::<Monthly>::new(&big);
         let rate = Rate::<Monthly>::new(0.0).unwrap();
-        assert_eq!(
-            series.net_present_value(rate),
-            Err(TvmError::NonFiniteResult)
-        );
-        assert_eq!(
-            series.net_future_value(rate),
-            Err(TvmError::NonFiniteResult)
-        );
+        assert_eq!(series.net_present_value(rate), Err(TvmError::Overflow));
+        assert_eq!(series.net_future_value(rate), Err(TvmError::Overflow));
     }
 
     #[test]
@@ -523,7 +525,7 @@ mod tests {
             assert_eq!(
                 Cashflows::<Monthly>::new(&flows)
                     .modified_internal_rate_of_return(rate(0.10), rate(0.10)),
-                Err(TvmError::NonFiniteResult)
+                Err(TvmError::Undefined)
             );
         }
 
@@ -533,7 +535,7 @@ mod tests {
             assert_eq!(
                 Cashflows::<Monthly>::new(&flows)
                     .modified_internal_rate_of_return(rate(0.10), rate(0.10)),
-                Err(TvmError::NonFiniteResult)
+                Err(TvmError::Undefined)
             );
         }
 

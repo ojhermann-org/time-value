@@ -70,7 +70,7 @@ fn future_value_factor(rate: f64, periods: f64) -> f64 {
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`] if the discounted sum overflows to a non-finite
+/// [`TvmError::Overflow`] if the discounted sum overflows to a non-finite
 /// value on extreme rate/period magnitudes (ADR-0021).
 pub fn present_value<P: Periodicity>(
     rate: Rate<P>,
@@ -101,7 +101,7 @@ pub fn present_value<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`] if the compounded sum overflows to a non-finite
+/// [`TvmError::Overflow`] if the compounded sum overflows to a non-finite
 /// value on extreme rate/period magnitudes (ADR-0021).
 pub fn future_value<P: Periodicity>(
     rate: Rate<P>,
@@ -133,15 +133,20 @@ pub fn future_value<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// Returns [`TvmError::NonFiniteResult`] if the amortisation is degenerate — in
+/// Returns [`TvmError::Undefined`] if the amortisation is degenerate — in
 /// particular when `periods` is zero, so there is nothing to amortise over and
-/// the payment is undefined (the factor is `0`, so the division is non-finite) —
-/// or if it overflows on extreme magnitudes (ADR-0021).
+/// the payment has no answer (the factor is `0`) — or [`TvmError::Overflow`] if
+/// the division overflows on extreme magnitudes (ADR-0021, ADR-0031).
 pub fn payment<P: Periodicity>(
     rate: Rate<P>,
     periods: Period,
     present: Money,
 ) -> Result<Money, TvmError> {
+    if periods.value() == 0.0 {
+        // Nothing to amortise over: the annuity factor is 0, so the payment is
+        // undefined rather than merely too large.
+        return Err(TvmError::Undefined);
+    }
     let factor = present_value_factor(rate.value(), periods.value());
     Money::from_operation(present.value() / factor)
 }
@@ -167,7 +172,7 @@ pub fn payment<P: Periodicity>(
 /// # Errors
 ///
 /// Returns [`TvmError::DivergentPerpetuity`] if `rate` is not strictly positive
-/// (the present value diverges), or [`TvmError::NonFiniteResult`] if the division
+/// (the present value diverges), or [`TvmError::Overflow`] if the division
 /// overflows on extreme magnitudes (ADR-0021).
 pub fn perpetuity<P: Periodicity>(rate: Rate<P>, payment: Money) -> Result<Money, TvmError> {
     growing_perpetuity(rate, Rate::from_valid(0.0), payment)
@@ -201,7 +206,7 @@ pub fn perpetuity<P: Periodicity>(rate: Rate<P>, payment: Money) -> Result<Money
 /// # Errors
 ///
 /// Returns [`TvmError::DivergentPerpetuity`] if `rate <= growth` (the present
-/// value diverges), or [`TvmError::NonFiniteResult`] if the division overflows on
+/// value diverges), or [`TvmError::Overflow`] if the division overflows on
 /// extreme magnitudes (ADR-0021).
 pub fn growing_perpetuity<P: Periodicity>(
     rate: Rate<P>,
@@ -236,10 +241,10 @@ pub fn growing_perpetuity<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`] if the payment never retires the balance — when
+/// [`TvmError::Undefined`] if the payment never retires the balance — when
 /// `PMT ≤ PV·r`, the payment does not even cover the period's interest, so the
-/// logarithm's argument is non-positive and `n` is undefined. [`NegativePeriods`]
-/// if the solved `n` is negative.
+/// logarithm's argument is non-positive and `n` has no answer (likewise a zero
+/// payment). [`NegativePeriods`] if the solved `n` is negative.
 ///
 /// [`NegativePeriods`]: TvmError::NegativePeriods
 pub fn periods<P: Periodicity>(
@@ -249,9 +254,18 @@ pub fn periods<P: Periodicity>(
 ) -> Result<Period, TvmError> {
     let r = rate.value();
     let n = if near_zero(r) {
+        if payment.value() == 0.0 {
+            return Err(TvmError::Undefined);
+        }
         present.value() / payment.value()
     } else {
-        -ln(1.0 - present.value() * r / payment.value()) / ln(1.0 + r)
+        let arg = 1.0 - present.value() * r / payment.value();
+        if arg <= 0.0 || arg.is_nan() {
+            // PMT ≤ PV·r (or a zero payment): the logarithm's argument is
+            // non-positive, so no finite number of payments retires the balance.
+            return Err(TvmError::Undefined);
+        }
+        -ln(arg) / ln(1.0 + r)
     };
     Period::from_operation(n)
 }
@@ -278,8 +292,9 @@ pub fn periods<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`] if `1 + FV·r / PMT` is non-positive (no real
-/// logarithm), or [`TvmError::NegativePeriods`] if the solved `n` is negative.
+/// [`TvmError::Undefined`] if `1 + FV·r / PMT` is non-positive (no real
+/// logarithm) or the payment is zero, or [`TvmError::NegativePeriods`] if the
+/// solved `n` is negative.
 pub fn periods_from_future<P: Periodicity>(
     rate: Rate<P>,
     payment: Money,
@@ -287,9 +302,16 @@ pub fn periods_from_future<P: Periodicity>(
 ) -> Result<Period, TvmError> {
     let r = rate.value();
     let n = if near_zero(r) {
+        if payment.value() == 0.0 {
+            return Err(TvmError::Undefined);
+        }
         future.value() / payment.value()
     } else {
-        ln(1.0 + future.value() * r / payment.value()) / ln(1.0 + r)
+        let arg = 1.0 + future.value() * r / payment.value();
+        if arg <= 0.0 || arg.is_nan() {
+            return Err(TvmError::Undefined);
+        }
+        ln(arg) / ln(1.0 + r)
     };
     Period::from_operation(n)
 }
@@ -322,7 +344,7 @@ pub fn periods_from_future<P: Periodicity>(
 ///
 /// [`TvmError::SolveDidNotConverge`] if no rate prices the payment stream at
 /// `present` (e.g. incompatible signs), or [`TvmError::RateOutOfRange`] /
-/// [`TvmError::NonFiniteResult`] if the located root is outside the valid rate
+/// [`TvmError::Overflow`] if the located root is outside the valid rate
 /// domain or non-finite.
 pub fn rate<P: Periodicity>(
     periods: Period,
@@ -430,7 +452,7 @@ pub mod due {
     ///
     /// # Errors
     ///
-    /// [`TvmError::NonFiniteResult`] if the discounted sum overflows to a
+    /// [`TvmError::Overflow`] if the discounted sum overflows to a
     /// non-finite value on extreme rate/period magnitudes (ADR-0021).
     pub fn present_value<P: Periodicity>(
         rate: Rate<P>,
@@ -462,7 +484,7 @@ pub mod due {
     ///
     /// # Errors
     ///
-    /// [`TvmError::NonFiniteResult`] if the compounded sum overflows to a
+    /// [`TvmError::Overflow`] if the compounded sum overflows to a
     /// non-finite value on extreme rate/period magnitudes (ADR-0021).
     pub fn future_value<P: Periodicity>(
         rate: Rate<P>,
@@ -498,14 +520,18 @@ pub mod due {
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::NonFiniteResult`] if the amortisation is degenerate — in
-    /// particular when `periods` is zero, so the factor is `0` and the division is
-    /// non-finite — or if it overflows on extreme magnitudes (ADR-0021).
+    /// Returns [`TvmError::Undefined`] if the amortisation is degenerate — in
+    /// particular when `periods` is zero, so the factor is `0` and the payment has
+    /// no answer — or [`TvmError::Overflow`] if the division overflows on extreme
+    /// magnitudes (ADR-0021, ADR-0031).
     pub fn payment<P: Periodicity>(
         rate: Rate<P>,
         periods: Period,
         present: Money,
     ) -> Result<Money, TvmError> {
+        if periods.value() == 0.0 {
+            return Err(TvmError::Undefined);
+        }
         let factor = present_value_factor(rate.value(), periods.value()) * (1.0 + rate.value());
         Money::from_operation(present.value() / factor)
     }
@@ -582,7 +608,7 @@ mod tests {
     #[test]
     fn payment_over_zero_periods_is_degenerate() {
         let result = annuity::payment(rate(0.01), Period::ZERO, Money::new(1000.0).unwrap());
-        assert_eq!(result, Err(TvmError::NonFiniteResult));
+        assert_eq!(result, Err(TvmError::Undefined));
     }
 
     #[test]
@@ -636,7 +662,7 @@ mod tests {
     #[test]
     fn due_payment_over_zero_periods_is_degenerate() {
         let result = annuity::due::payment(rate(0.01), Period::ZERO, Money::new(1000.0).unwrap());
-        assert_eq!(result, Err(TvmError::NonFiniteResult));
+        assert_eq!(result, Err(TvmError::Undefined));
     }
 
     #[test]
@@ -729,7 +755,7 @@ mod tests {
                 Money::new(100.0).unwrap(),
                 Money::new(10_000.0).unwrap(),
             ),
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Undefined)
         );
     }
 

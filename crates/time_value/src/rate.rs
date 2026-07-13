@@ -93,14 +93,14 @@ impl<P: Periodicity> Rate<P> {
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::NonFiniteResult`] if scaling overflows `f64` (only for
+    /// Returns [`TvmError::Overflow`] if scaling leaves the finite range (only for
     /// an absurdly large rate); see `docs/adr/0021-fallible-operations-on-non-finite-results.md`.
     pub fn nominal_annual(self) -> Result<f64, TvmError> {
         let nominal = self.per_period * f64::from(P::PERIODS_PER_YEAR);
         if nominal.is_finite() {
             Ok(nominal)
         } else {
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Overflow)
         }
     }
 
@@ -119,15 +119,15 @@ impl<P: Periodicity> Rate<P> {
     /// Constructs from the `f64` result of an operation, validating the rate
     /// domain (finite and `> -1.0`).
     ///
-    /// The non-finite case is [`TvmError::NonFiniteResult`] (an overflow), the
-    /// mirror of [`Money::from_operation`](crate::Money) (ADR-0021). A finite but
+    /// The non-finite case is [`TvmError::Overflow`], the mirror of
+    /// [`Money::from_operation`](crate::Money) (ADR-0021, ADR-0031). A finite but
     /// out-of-domain result — an exponentiation that underflows `1 + r` to `0`,
     /// yielding exactly `-1.0` — is [`TvmError::RateOutOfRange`], the same variant
     /// [`new`](Self::new) uses, because such a rate is meaningless, not overflowed.
     #[cfg(any(feature = "std", feature = "libm"))]
     pub(crate) fn from_operation(rate: f64) -> Result<Self, TvmError> {
         if !rate.is_finite() {
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Overflow)
         } else if rate > -1.0 {
             Ok(Self::from_valid(rate))
         } else {
@@ -159,7 +159,7 @@ impl<P: Periodicity> Rate<P> {
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::NonFiniteResult`] if the conversion overflows `f64`
+    /// Returns [`TvmError::Overflow`] if the conversion overflows `f64`
     /// (compounding a large rate to a much coarser periodicity), or
     /// [`TvmError::RateOutOfRange`] in the degenerate case where compounding a
     /// near-total-loss rate underflows `1 + r` to zero (yielding `-1.0`).
@@ -299,7 +299,7 @@ mod tests {
         fn compounding_a_huge_rate_to_a_coarser_periodicity_overflows() {
             // (1 + 1e290)^12 is well beyond f64::MAX → a non-finite result.
             let enormous = Rate::<Monthly>::new(1e290).unwrap();
-            assert_eq!(enormous.convert::<Annual>(), Err(TvmError::NonFiniteResult));
+            assert_eq!(enormous.convert::<Annual>(), Err(TvmError::Overflow));
         }
     }
 }

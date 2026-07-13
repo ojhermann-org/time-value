@@ -31,7 +31,7 @@ use crate::{Money, Period, Periodicity, Rate, TvmError};
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`] if the
+/// [`TvmError::Overflow`] if the
 /// discounting overflows to a non-finite value on extreme rate/period magnitudes
 /// (ADR-0021).
 pub fn present_value<P: Periodicity>(
@@ -66,7 +66,7 @@ pub fn present_value<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// [`TvmError::NonFiniteResult`] if the
+/// [`TvmError::Overflow`] if the
 /// compounding overflows to a non-finite value on extreme rate/period magnitudes
 /// (ADR-0021).
 pub fn future_value<P: Periodicity>(
@@ -102,8 +102,8 @@ pub fn future_value<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// - [`TvmError::NonFiniteResult`] if `rate` is zero (no growth, so `n` is
-///   undefined) or `future / present` is non-positive (no real logarithm).
+/// - [`TvmError::Undefined`] if `rate` is zero (no growth, so `n` is undefined)
+///   or `future / present` is not a positive finite number (no real logarithm).
 /// - [`TvmError::NegativePeriods`] if the solved `n` is negative — `future` lies
 ///   *before* `present` at this rate (e.g. `future < present` with a positive
 ///   rate).
@@ -112,7 +112,12 @@ pub fn periods<P: Periodicity>(
     present: Money,
     future: Money,
 ) -> Result<Period, TvmError> {
-    let n = ln(future.value() / present.value()) / ln(1.0 + rate.value());
+    let ratio = future.value() / present.value();
+    if rate.value() == 0.0 || !ratio.is_finite() || ratio <= 0.0 {
+        // No growth (rate 0), or a ratio with no real logarithm: `n` is undefined.
+        return Err(TvmError::Undefined);
+    }
+    let n = ln(ratio) / ln(1.0 + rate.value());
     Period::from_operation(n)
 }
 
@@ -140,8 +145,9 @@ pub fn periods<P: Periodicity>(
 ///
 /// # Errors
 ///
-/// - [`TvmError::NonFiniteResult`] if `periods` is zero (no elapsed time, so the
-///   rate is undefined) or the power overflows on extreme magnitudes.
+/// - [`TvmError::Undefined`] if `periods` is zero (no elapsed time, so the rate
+///   is undefined).
+/// - [`TvmError::Overflow`] if the power overflows on extreme magnitudes.
 /// - [`TvmError::RateOutOfRange`] if the implied growth factor `(FV / PV)^(1/n)`
 ///   is non-positive — e.g. `future / present` is negative — so the rate would be
 ///   `≤ −100%`.
@@ -151,7 +157,7 @@ pub fn rate<P: Periodicity>(
     future: Money,
 ) -> Result<Rate<P>, TvmError> {
     if periods.value() <= 0.0 {
-        return Err(TvmError::NonFiniteResult);
+        return Err(TvmError::Undefined);
     }
     let growth = powf(future.value() / present.value(), 1.0 / periods.value());
     Rate::from_operation(growth - 1.0)
@@ -218,16 +224,13 @@ mod tests {
     }
 
     #[test]
-    fn future_value_overflow_is_a_non_finite_result() {
+    fn future_value_overflow_is_reported() {
         // 2^2000 is well past f64::MAX, so compounding overflows — an error, not
         // a silent `inf` (ADR-0021).
         let rate = Rate::<Monthly>::new(1.0).unwrap(); // 100% per period
         let periods = Period::new(2000.0).unwrap();
         let amount = Money::new(1e6).unwrap();
-        assert_eq!(
-            future_value(rate, periods, amount),
-            Err(TvmError::NonFiniteResult)
-        );
+        assert_eq!(future_value(rate, periods, amount), Err(TvmError::Overflow));
     }
 
     #[test]
@@ -256,7 +259,7 @@ mod tests {
                 Money::new(1000.0).unwrap(),
                 Money::new(2000.0).unwrap()
             ),
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Undefined)
         );
     }
 
@@ -282,7 +285,7 @@ mod tests {
                 Money::new(1000.0).unwrap(),
                 Money::new(2000.0).unwrap(),
             ),
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Undefined)
         );
     }
 }
