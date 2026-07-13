@@ -101,9 +101,19 @@ bacon.toml                # bacon jobs (default: clippy)
 
 ## CI / release
 
-- CI runs `nix develop -c cargo fmt/clippy/nextest/deny` on pushes to `main` and
-  on PRs (one `ci` job). The job id `ci` is the required status check enforced by
-  the org ruleset — **do not rename it, set a custom `name:`, or remove it**.
+- CI runs `nix develop -c cargo fmt/clippy/nextest/deny` on pushes to `main`, on
+  PRs, and in the merge queue's `merge_group` (one `ci` job). The job id `ci` is
+  the required status check — **do not rename it, set a custom `name:`, or remove
+  it**, and keep the `merge_group` trigger (a required-check merge queue with no
+  `merge_group` CI deadlocks).
+- **`main` merges go through a merge queue** (repo-level `merge-queue` ruleset:
+  `required_status_checks = ci` + `merge_queue`, squash method, ALLGREEN). Don't
+  merge a PR directly — `gh pr merge <n> --squash` **enqueues** it; GitHub rebases
+  it on `main`, runs `ci` against the `merge_group` ref, and squash-merges on
+  green. So a PR needs green CI *and* a clean rebase to land; a queued PR that
+  fails or conflicts is ejected for a manual rebase. The repo-level ruleset is
+  managed by hand (the `github-settings` IaC repo manages only *org-level*
+  rulesets — `imports.tf`: "Repositories are no longer managed here").
 - Release: `release-plz.yml` drives per-crate versions, changelogs, tags, and
   GitHub releases from Conventional Commits (`release-plz.toml`, `publish =
   false`); `publish.yml` then `cargo publish`es via crates.io OIDC trusted
