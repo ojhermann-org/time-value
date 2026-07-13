@@ -43,20 +43,23 @@ impl Period {
     }
 
     /// Constructs from the `f64` result of a solve (e.g. a solved NPER),
-    /// distinguishing a non-finite result — an overflow or a mathematically
-    /// undefined case — from a finite but negative one.
+    /// distinguishing a non-finite result from a finite but negative one.
     ///
-    /// A non-finite value is [`TvmError::NonFiniteResult`] (the mirror of
-    /// [`Money::from_operation`](crate::Money) and [`Rate::from_operation`], per
-    /// ADR-0021); a finite negative count — a period count solved into the past —
-    /// is [`TvmError::NegativePeriods`], the same variant [`new`](Self::new) uses.
+    /// A non-finite value reaching here is a solved count that overflowed the
+    /// representable range, so it is [`TvmError::Overflow`] — the mirror of
+    /// [`Money::from_operation`](crate::Money) and [`Rate::from_operation`] (per
+    /// ADR-0021, ADR-0031); the mathematically undefined solves (a zero rate, a
+    /// non-positive logarithm argument) are guarded at their call sites and return
+    /// [`TvmError::Undefined`] before reaching here. A finite negative count — a
+    /// period count solved into the past — is [`TvmError::NegativePeriods`], the
+    /// same variant [`new`](Self::new) uses.
     ///
     /// [`Rate::from_operation`]: crate::Rate
     pub(crate) fn from_operation(periods: f64) -> Result<Self, TvmError> {
         if periods.is_finite() {
             Self::new(periods)
         } else {
-            Err(TvmError::NonFiniteResult)
+            Err(TvmError::Overflow)
         }
     }
 }

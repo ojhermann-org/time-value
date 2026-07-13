@@ -111,14 +111,24 @@ pub enum TvmError {
     RateOutOfRange,
     /// A monetary amount supplied to a constructor was not finite (`NaN` or an
     /// infinity). For a non-finite value *produced by an operation*, see
-    /// [`NonFiniteResult`](Self::NonFiniteResult).
+    /// [`Overflow`](Self::Overflow) and [`Undefined`](Self::Undefined).
     NonFiniteAmount,
-    /// An operation did not produce a finite amount — its `f64` arithmetic
-    /// overflowed to an infinity or `NaN`, or the inputs were a mathematically
-    /// undefined case (e.g. an [`annuity::payment`] over
-    /// zero periods). Distinct from [`NonFiniteAmount`](Self::NonFiniteAmount),
-    /// which is a non-finite value passed *in* (ADR-0021).
-    NonFiniteResult,
+    /// An operation's `f64` arithmetic overflowed the finite range — a genuine
+    /// result exists mathematically but is too large to represent, so it became an
+    /// infinity or `NaN` (e.g. compounding an enormous rate over a long horizon).
+    /// Distinct from [`Undefined`](Self::Undefined), where the operation has no
+    /// answer for the inputs at all, and from
+    /// [`NonFiniteAmount`](Self::NonFiniteAmount), a non-finite value passed *in*
+    /// (ADR-0021, ADR-0031).
+    Overflow,
+    /// An operation is mathematically undefined for the given inputs — a
+    /// degenerate case with no answer, not an overflow of a real one. Examples:
+    /// an [`annuity::payment`] over zero periods (nothing to amortise over), a
+    /// solved period count whose logarithm has a non-positive argument, or a
+    /// [`Cashflows::modified_internal_rate_of_return`] on a series with no span or
+    /// no outflows. Distinct from [`Overflow`](Self::Overflow), which is a real
+    /// result that exceeds `f64` range (ADR-0031).
+    Undefined,
     /// A period count was negative or not finite.
     NegativePeriods,
     /// A dated cashflow was given a non-finite year-offset (`NaN` or an infinity).
@@ -153,9 +163,8 @@ impl fmt::Display for TvmError {
                 f.write_str("rate must be finite and greater than -1.0 (-100%)")
             }
             Self::NonFiniteAmount => f.write_str("monetary amount must be finite"),
-            Self::NonFiniteResult => {
-                f.write_str("operation did not produce a finite amount (overflow or undefined)")
-            }
+            Self::Overflow => f.write_str("operation overflowed the finite range"),
+            Self::Undefined => f.write_str("operation is undefined for these inputs"),
             Self::NegativePeriods => f.write_str("period count must be finite and non-negative"),
             Self::NonFiniteOffset => f.write_str("dated cashflow year-offset must be finite"),
             Self::EmptyCashflows => f.write_str("cashflow series is empty"),

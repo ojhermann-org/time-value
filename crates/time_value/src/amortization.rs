@@ -82,15 +82,15 @@ impl<P: Periodicity> Schedule<P> {
     ///
     /// # Errors
     ///
-    /// [`TvmError::NonFiniteResult`] if `payment` cannot amortise `principal` — it
+    /// [`TvmError::Undefined`] if `payment` cannot amortise `principal` — it
     /// does not exceed the first period's interest, so the balance would never
-    /// fall (ADR-0027).
+    /// fall and no finite schedule exists (ADR-0027, ADR-0031).
     pub fn with_payment(rate: Rate<P>, payment: Money, principal: Money) -> Result<Self, TvmError> {
         // A payment that does not exceed the first period's interest never
         // amortises a positive balance. (A non-positive balance is an empty
         // schedule, handled by `next`.)
         if principal.value() > 0.0 && payment.value() <= principal.value() * rate.value() {
-            return Err(TvmError::NonFiniteResult);
+            return Err(TvmError::Undefined);
         }
         Ok(Self {
             balance: principal.value(),
@@ -127,7 +127,7 @@ impl<P: Periodicity> Schedule<P> {
     ///
     /// # Errors
     ///
-    /// As [`annuity::payment`](crate::annuity::payment) — [`TvmError::NonFiniteResult`]
+    /// As [`annuity::payment`](crate::annuity::payment) — [`TvmError::Undefined`]
     /// if `periods` is zero (nothing to amortise over).
     pub fn for_term(
         rate: Rate<P>,
@@ -242,7 +242,7 @@ mod tests {
                 Money::new(1000.0).unwrap()
             )
             .map(Schedule::count),
-            Err(TvmError::NonFiniteResult),
+            Err(TvmError::Undefined),
         );
     }
 
@@ -284,7 +284,7 @@ mod tests {
             assert_eq!(
                 Schedule::for_term(rate(0.01), Period::ZERO, Money::new(1000.0).unwrap())
                     .map(Schedule::count),
-                Err(crate::TvmError::NonFiniteResult),
+                Err(crate::TvmError::Undefined),
             );
         }
     }
