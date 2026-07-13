@@ -26,6 +26,55 @@ pub(crate) fn opposite_signs(a: f64, b: f64) -> bool {
     (a < 0.0 && b > 0.0) || (a > 0.0 && b < 0.0)
 }
 
+/// The relative convergence tolerance for a residual whose magnitude scales with
+/// `scale` — an upper bound on `|residual|` (e.g. `Σ|CFₜ|` for an NPV, or the
+/// target value for a solve-for-rate). Floored at `1` so a tiny problem keeps a
+/// sane absolute tolerance, and guarded so a non-finite scale does not make the
+/// tolerance infinite. Shared by the IRR/XIRR checks and the annuity solve-for-rate
+/// (ADR-0021).
+pub(crate) fn relative_tolerance(scale: f64) -> f64 {
+    const RELATIVE: f64 = 1e-9;
+    let scale = if !scale.is_finite() || scale < 1.0 {
+        1.0
+    } else {
+        scale
+    };
+    RELATIVE * scale
+}
+
+/// Newton–Raphson from `guess` for a residual in the per-period rate `r`, given a
+/// closure returning `(residual, d(residual)/dr)` at a candidate `r`.
+///
+/// `None` if it does not reach a root within its iteration budget, the derivative
+/// goes flat, or an iterate leaves the valid rate domain (`r ≤ −1`, or a
+/// non-finite value — `is_finite` also rejects `NaN`, so a diverging iterate fails
+/// cleanly rather than looping). Callers pair this with [`bracket_and_bisect`] as a
+/// robust fallback (ADR-0020).
+pub(crate) fn newton(
+    residual_and_derivative: impl Fn(f64) -> (f64, f64),
+    guess: f64,
+    tolerance: f64,
+) -> Option<f64> {
+    const MAX_ITERATIONS: u32 = 128;
+    const MIN_DERIVATIVE: f64 = 1e-12;
+
+    let mut rate = guess;
+    for _ in 0..MAX_ITERATIONS {
+        if !rate.is_finite() || rate <= -1.0 {
+            return None;
+        }
+        let (residual, derivative) = residual_and_derivative(rate);
+        if within(residual, tolerance) {
+            return Some(rate);
+        }
+        if within(derivative, MIN_DERIVATIVE) {
+            return None;
+        }
+        rate -= residual / derivative;
+    }
+    None
+}
+
 /// Bisect for the root of `f` in `[lo, hi]`, where `f` has opposite signs at the
 /// ends (`f_lo` is `f(lo)`). Returns as soon as a sample is within `tol` of zero,
 /// or the midpoint after `max` steps.

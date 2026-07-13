@@ -17,7 +17,7 @@
 //! exceed its growth rate, which its constructors reject.
 
 use crate::math::{ln, powf};
-use crate::root::{abs, bracket_and_bisect};
+use crate::root::{abs, bracket_and_bisect, relative_tolerance};
 use crate::{Money, Period, Periodicity, Rate, TvmError};
 
 /// Rate magnitude below which the `r → 0` limit is used instead of the closed
@@ -389,11 +389,7 @@ fn solve_rate<P: Periodicity>(
     target: f64,
     factor: impl Fn(f64, f64) -> f64,
 ) -> Result<Rate<P>, TvmError> {
-    let mut scale = abs(target);
-    if !scale.is_finite() || scale < 1.0 {
-        scale = 1.0;
-    }
-    let tolerance = 1e-9 * scale;
+    let tolerance = relative_tolerance(abs(target));
     match bracket_and_bisect(|r| payment * factor(r, periods) - target, tolerance) {
         Some(r) => Rate::from_operation(r),
         None => Err(TvmError::SolveDidNotConverge),

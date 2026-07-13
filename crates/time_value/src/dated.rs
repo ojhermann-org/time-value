@@ -9,7 +9,7 @@
 //! (`docs/adr/0029-dated-cashflows-xnpv-xirr.md`).
 
 use crate::math::powf;
-use crate::root::{abs, bracket_and_bisect, within};
+use crate::root::{self, abs};
 use crate::{Annual, Money, Rate, TvmError};
 
 /// A single cashflow at an offset, in **years**, from a reference point.
@@ -157,10 +157,11 @@ impl<'a> DatedCashflows<'a> {
         if self.flows.is_empty() {
             return Err(TvmError::EmptyCashflows);
         }
-        let tolerance = self.npv_tolerance();
-        match self
-            .newton(guess, tolerance)
-            .or_else(|| bracket_and_bisect(|r| self.xnpv_at(r), tolerance))
+        // Newton from `guess`, then the robust bracketing fallback (ADR-0020), with
+        // the magnitude-scaled tolerance (ADR-0021) — all shared with IRR via `root`.
+        let tolerance = root::relative_tolerance(self.magnitude());
+        match root::newton(|r| self.xnpv_and_derivative(r), guess, tolerance)
+            .or_else(|| root::bracket_and_bisect(|r| self.xnpv_at(r), tolerance))
         {
             Some(rate) => Rate::new(rate),
             None => Err(TvmError::IrrDidNotConverge),
@@ -204,42 +205,14 @@ impl<'a> DatedCashflows<'a> {
         (npv, derivative)
     }
 
-    /// The XNPV convergence tolerance, scaled by the cashflow magnitudes (a floor
-    /// of `1`), mirroring [`Cashflows`](crate::Cashflows) (ADR-0021).
-    fn npv_tolerance(self) -> f64 {
-        const RELATIVE: f64 = 1e-9;
+    /// `Σ|CFᵢ|` — an upper bound on `|XNPV|`, used to scale the solver tolerance
+    /// (ADR-0021), mirroring [`Cashflows`](crate::Cashflows).
+    fn magnitude(self) -> f64 {
         let mut scale = 0.0;
         for cf in self.flows {
             scale += abs(cf.amount.value());
         }
-        if !scale.is_finite() || scale < 1.0 {
-            scale = 1.0;
-        }
-        RELATIVE * scale
-    }
-
-    /// Newton–Raphson from `guess`. `None` if it does not reach a root within its
-    /// iteration budget, the derivative goes flat, or an iterate leaves the valid
-    /// domain (a rate ≤ −100%, or a non-finite value).
-    fn newton(self, guess: f64, tolerance: f64) -> Option<f64> {
-        const MAX_ITERATIONS: u32 = 128;
-        const MIN_DERIVATIVE: f64 = 1e-12;
-
-        let mut rate = guess;
-        for _ in 0..MAX_ITERATIONS {
-            if !rate.is_finite() || rate <= -1.0 {
-                return None;
-            }
-            let (npv, derivative) = self.xnpv_and_derivative(rate);
-            if within(npv, tolerance) {
-                return Some(rate);
-            }
-            if within(derivative, MIN_DERIVATIVE) {
-                return None;
-            }
-            rate -= npv / derivative;
-        }
-        None
+        scale
     }
 }
 
