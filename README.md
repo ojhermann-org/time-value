@@ -37,8 +37,8 @@ let irr = project.internal_rate_of_return()?;                     // ≈ 0.1307
 From the shell ([`time-value` CLI](crates/time-value-cli)):
 
 ```sh
-time-value npv --rate 0.01 -100 60 60   # 18.2237…
-time-value irr -100 60 60               # 0.1307… per period
+time-value series npv --rate 0.01 -100 60 60   # 18.2237…
+time-value series irr -100 60 60               # 0.1307… per period
 ```
 
 The [`time-value-mcp` server](crates/time-value-mcp) exposes the same operations

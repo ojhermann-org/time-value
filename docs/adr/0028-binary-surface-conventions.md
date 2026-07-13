@@ -1,6 +1,6 @@
 # ADR-0028: Binary surface conventions (CLI grammar & MCP tools)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-07-13
 - **Deciders:** Project owner
 
