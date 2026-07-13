@@ -1,6 +1,6 @@
 # ADR-0011: MCP server
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0028, 0029)
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 

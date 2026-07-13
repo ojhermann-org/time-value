@@ -34,8 +34,8 @@
 //! `docs/adr/0009-no_std-and-optional-libm.md`): the [`single_sum`] module
 //! (present/future value and the solve-for `periods` / `rate` inverses, with the
 //! [`Period`] type), the [`annuity`] module (ordinary, [annuity-due](annuity::due),
-//! and [perpetuity](annuity::perpetuity) forms, plus the `periods` / `rate`
-//! solves), the modified internal rate of return
+//! [perpetuity](annuity::perpetuity), and [growing-perpetuity](annuity::growing_perpetuity)
+//! forms, plus the `periods` / `rate` solves), the modified internal rate of return
 //! ([`Cashflows::modified_internal_rate_of_return`]), the term-based
 //! [`amortization`] constructor, effective rate conversions between
 //! periodicities ([`Rate::convert`] / [`Rate::effective_annual`]), and
@@ -123,7 +123,7 @@ pub enum TvmError {
     NegativePeriods,
     /// A dated cashflow was given a non-finite year-offset (`NaN` or an infinity).
     /// The offset may be negative or zero, but must be finite
-    /// ([`DatedCashflow`](crate::DatedCashflow); ADR-0029).
+    /// ([`DatedCashflow`]; ADR-0029).
     NonFiniteOffset,
     /// An operation that requires at least one cashflow was given an empty
     /// series (e.g. [`Cashflows::internal_rate_of_return`]).

@@ -1,6 +1,6 @@
 # ADR-0010: CLI surface
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by 0028, 0029)
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 

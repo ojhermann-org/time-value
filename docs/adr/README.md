@@ -28,8 +28,8 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0007](0007-rust-edition-and-msrv.md) | Rust edition & MSRV | Accepted |
 | [0008](0008-nix-flake-dev-environment.md) | Nix flake dev environment | Accepted |
 | [0009](0009-no_std-and-optional-libm.md) | `no_std` core & optional `libm` | Accepted (amended by 0019) |
-| [0010](0010-cli-surface.md) | CLI surface | Accepted |
-| [0011](0011-mcp-server.md) | MCP server | Accepted |
+| [0010](0010-cli-surface.md) | CLI surface | Accepted (amended by 0028, 0029) |
+| [0011](0011-mcp-server.md) | MCP server | Accepted (amended by 0028, 0029) |
 | [0012](0012-ci-and-release-automation.md) | CI and release automation | Accepted |
 | [0013](0013-core-api-values-and-discrete-operations.md) | Core API — values, cashflows & discrete operations | Accepted (amended by 0020, 0021, 0026) |
 | [0014](0014-transcendental-single-sum-operations.md) | Transcendental operations behind `std`/`libm` — single-sum value | Accepted (amended by 0019, 0021, 0025) |
@@ -46,6 +46,6 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0025](0025-solve-for-periods-and-rate.md) | Solve for periods (NPER) and rate (RATE) | Accepted |
 | [0026](0026-modified-internal-rate-of-return.md) | Modified internal rate of return (MIRR) | Accepted |
 | [0027](0027-amortization-schedule.md) | Amortization schedule as a lazy iterator | Accepted |
-| [0028](0028-binary-surface-conventions.md) | Binary surface conventions (CLI grammar & MCP tools) | Proposed |
+| [0028](0028-binary-surface-conventions.md) | Binary surface conventions (CLI grammar & MCP tools) | Accepted |
 | [0029](0029-dated-cashflows-xnpv-xirr.md) | Dated cashflows — XNPV / XIRR | Accepted (amended by 0030) |
 | [0030](0030-shared-day-count-support-crate.md) | Shared day-count support crate | Accepted |
