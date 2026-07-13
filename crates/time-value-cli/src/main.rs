@@ -858,7 +858,11 @@ fn run(cli: Cli) -> Result<()> {
 
 fn main() {
     if let Err(error) = run(Cli::parse()) {
-        eprintln!("error: {error:#}");
+        // Print only the outermost message, not anyhow's full `{:#}` chain: our
+        // context strings already restate the library error in user terms, so the
+        // chain just doubled the text (ADR-0028 / #30). An uncontexted `TvmError`
+        // still surfaces its own Display here.
+        eprintln!("error: {error}");
         std::process::exit(1);
     }
 }
