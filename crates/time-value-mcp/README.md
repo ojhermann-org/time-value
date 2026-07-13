@@ -14,8 +14,12 @@ the core library stays synchronous.
 | `irr` | internal rate of return of a series |
 | `mirr` | modified internal rate of return (finance + reinvestment rates) |
 | `xnpv`, `xirr` | net present value / internal rate of return of cashflows on irregular ISO dates, at an annual rate |
-| `present_value`, `future_value` | a single sum over a number of periods |
+| `single_sum_present_value`, `single_sum_future_value` | a single sum over a number of periods |
+| `single_sum_periods`, `single_sum_rate` | solve a single sum for periods (NPER) or rate (RATE) |
 | `annuity_present_value`, `annuity_future_value`, `annuity_payment` | ordinary (end-of-period) annuities |
+| `annuity_periods`, `annuity_rate` | solve an annuity for periods / rate, from a present or future value |
+| `annuity_perpetuity`, `annuity_growing_perpetuity` | present value of a (growing) perpetuity |
+| `annuity_due_present_value`, `annuity_due_future_value`, `annuity_due_payment` | annuity-due (start-of-period) |
 
 Rates are per period (annual for `xnpv`/`xirr`); cashflows are signed (outflow
 negative). `xnpv`/`xirr` take `{date, amount}` flows with ISO `YYYY-MM-DD` dates,

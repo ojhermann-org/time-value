@@ -37,7 +37,7 @@ fn stdio_session_lists_tools_and_computes_npv() {
         // tools/list exposes every tool with a JSON-Schema input.
         .stdout(predicate::str::contains("npv"))
         .stdout(predicate::str::contains("irr"))
-        .stdout(predicate::str::contains("present_value"))
+        .stdout(predicate::str::contains("single_sum_present_value"))
         .stdout(predicate::str::contains("annuity_payment"))
         .stdout(predicate::str::contains("inputSchema"))
         // tools/call returns the computed NPV (~18.2237).
@@ -111,11 +111,62 @@ fn an_invalid_date_is_an_error() {
 }
 
 #[test]
+fn single_sum_periods_tool_solves() {
+    // 1000 → 1126.825 at 1%/period ≈ 12 periods.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"single_sum_periods","arguments":{"rate":0.01,"present":1000,"future":1126.825}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("single_sum_periods"))
+        .stdout(predicate::str::contains("11.9").or(predicate::str::contains("12.0")));
+}
+
+#[test]
+fn annuity_perpetuity_and_due_tools() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"annuity_perpetuity","arguments":{"rate":0.05,"payment":100}}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"annuity_due_present_value","arguments":{"rate":0.01,"periods":12,"payment":100}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        // Perpetuity 100/0.05 = 2000; annuity-due PV ≈ 1136.76.
+        .stdout(predicate::str::contains("2000"))
+        .stdout(predicate::str::contains("1136.7"));
+}
+
+#[test]
+fn annuity_periods_requires_exactly_one_anchor() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"annuity_periods","arguments":{"rate":0.01,"payment":100}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("present").or(predicate::str::contains("future")));
+}
+
+#[test]
 fn an_overflowing_result_is_an_error_not_null() {
     // Previously this returned `{"future_value":null}` with isError:false — a
     // silent non-answer. Now it is a proper error (ADR-0021).
     let calls = concat!(
-        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"future_value","arguments":{"rate":1,"periods":2000,"present":1000000}}}"#,
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"single_sum_future_value","arguments":{"rate":1,"periods":2000,"present":1000000}}}"#,
         "\n",
     );
 
@@ -125,7 +176,7 @@ fn an_overflowing_result_is_an_error_not_null() {
         .assert()
         .success() // the process exits cleanly; the error is in the JSON-RPC response
         .stdout(predicate::str::contains("finite"))
-        .stdout(predicate::str::contains("\"future_value\":null").not());
+        .stdout(predicate::str::contains("\"single_sum_future_value\":null").not());
 }
 
 #[test]
