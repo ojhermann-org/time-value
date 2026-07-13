@@ -197,6 +197,22 @@ pub(crate) struct RateFromNominalInput {
     pub periodicity: String,
 }
 
+/// Input for the `amortize` tool. Provide exactly one of `periods` (amortise over
+/// a term) or `payment` (amortise with a level payment).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct AmortizeInput {
+    /// Per-period rate.
+    pub rate: f64,
+    /// The principal to amortise.
+    pub principal: f64,
+    /// Amortise over this many periods (mutually exclusive with `payment`).
+    #[serde(default)]
+    pub periods: Option<f64>,
+    /// Amortise with this level payment (mutually exclusive with `periods`).
+    #[serde(default)]
+    pub payment: Option<f64>,
+}
+
 /// Input for the `annuity_present_value` and `annuity_future_value` tools.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct AnnuityValueInput {
