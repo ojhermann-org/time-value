@@ -92,7 +92,12 @@ fixed internal marker exactly as today. No global `--periodicity` label.
 ### 4. Output: single value, or a tabular array under the same `--json`
 
 The existing shape stands: a scalar result prints as a plain number, or as a
-one-field JSON object keyed by the operation under `--json`. **Tabular results**
+one-field JSON object keyed by the operation under `--json`. **The scalar key is
+the operation's MCP tool name (§5)** — bare for well-known acronyms (`npv`,
+`nfv`, `irr`, `mirr`, `xnpv`, `xirr`), family-prefixed and spelled out otherwise
+(`single_sum_present_value`, `annuity_present_value`, `rate_effective_annual`,
+…). One operation, one identifier across both binaries: piping the CLI's `--json`
+and reading the MCP tool's result yield the same key. **Tabular results**
 (the amortization schedule, and any future multi-row op) extend it consistently:
 
 - **Plain:** a header line, then one aligned row per period.
