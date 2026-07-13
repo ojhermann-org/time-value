@@ -25,6 +25,9 @@ pub struct Rate<P: Periodicity> {
 }
 
 impl<P: Periodicity> Rate<P> {
+    /// A rate of zero — no growth and no discounting — at any periodicity.
+    pub const ZERO: Self = Self::from_valid(0.0);
+
     /// Wraps a per-period `rate` (e.g. `0.01` for 1% per period).
     ///
     /// # Errors
@@ -184,6 +187,28 @@ impl<P: Periodicity> Rate<P> {
     }
 }
 
+/// The default `Rate` is [`ZERO`](Rate::ZERO) at the inferred periodicity
+/// (ADR-0032).
+impl<P: Periodicity> Default for Rate<P> {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
+/// Fallibly wraps an `f64` per-period rate, mirroring [`Rate::new`]; the
+/// periodicity is inferred from context (ADR-0032).
+///
+/// # Errors
+///
+/// Returns [`TvmError::RateOutOfRange`] if the value is not finite or `<= -1.0`.
+impl<P: Periodicity> TryFrom<f64> for Rate<P> {
+    type Error = TvmError;
+
+    fn try_from(rate: f64) -> Result<Self, Self::Error> {
+        Self::new(rate)
+    }
+}
+
 // `Debug`/`Display` are hand-written so the periodicity shows as its name rather
 // than a `PhantomData`. `Clone`/`Copy`/`PartialEq` are derived (a derived
 // `PartialEq` is exempt from `clippy::float_cmp`, unlike a hand-written one).
@@ -252,6 +277,25 @@ mod tests {
             Rate::<Monthly>::from_nominal_annual(-12.0),
             Err(TvmError::RateOutOfRange)
         );
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn zero_and_default_are_a_zero_rate() {
+        assert_eq!(Rate::<Monthly>::ZERO.value(), 0.0);
+        assert_eq!(Rate::<Annual>::default(), Rate::<Annual>::ZERO);
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn try_from_mirrors_new() {
+        assert_eq!(Rate::<Monthly>::try_from(0.01).unwrap().value(), 0.01);
+        assert_eq!(
+            Rate::<Monthly>::try_from(-1.0),
+            Err(TvmError::RateOutOfRange)
+        );
+        let r: Rate<Monthly> = 0.02.try_into().unwrap();
+        assert_eq!(r.value(), 0.02);
     }
 
     #[cfg(any(feature = "std", feature = "libm"))]

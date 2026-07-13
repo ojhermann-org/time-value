@@ -136,6 +136,39 @@ impl Money {
     }
 }
 
+/// The default `Money` is [`ZERO`](Money::ZERO) — the additive identity
+/// (ADR-0032).
+impl Default for Money {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
+/// Fallibly wraps an `f64`, mirroring [`Money::new`]: lets a call site that
+/// expects a `Money` use `f64::try_into()` (ADR-0032).
+///
+/// # Errors
+///
+/// Returns [`TvmError::NonFiniteAmount`] if the value is not finite.
+impl TryFrom<f64> for Money {
+    type Error = TvmError;
+
+    fn try_from(amount: f64) -> Result<Self, Self::Error> {
+        Self::new(amount)
+    }
+}
+
+/// Extracts the plain amount, mirroring [`Money::value`] (ADR-0032).
+///
+/// Only `Money` gets a `From<_> for f64`: converting a [`Rate`](crate::Rate)
+/// this way would silently drop its periodicity tag — the very safety the type
+/// exists for — so rates keep `value()` explicit.
+impl From<Money> for f64 {
+    fn from(money: Money) -> Self {
+        money.value()
+    }
+}
+
 /// Flips the sign — an inflow becomes an outflow, and vice versa.
 ///
 /// Infallible: the negation of a finite amount is finite (ADR-0021).
@@ -247,5 +280,26 @@ mod tests {
         // 0 / 0 is undefined, not zero.
         assert_eq!(Money::ZERO.try_div(0.0), Err(TvmError::Undefined));
         assert_eq!(huge().try_div(0.5), Err(TvmError::Overflow));
+    }
+
+    #[test]
+    fn default_is_zero() {
+        assert_eq!(Money::default(), Money::ZERO);
+    }
+
+    #[test]
+    fn try_from_mirrors_new() {
+        assert_eq!(Money::try_from(42.5).unwrap().value(), 42.5);
+        assert_eq!(Money::try_from(f64::NAN), Err(TvmError::NonFiniteAmount));
+        // Usable through the `TryInto` sugar at an inference site.
+        let m: Money = 10.0.try_into().unwrap();
+        assert_eq!(m.value(), 10.0);
+    }
+
+    #[test]
+    fn into_f64_is_the_amount() {
+        assert_eq!(f64::from(Money::new(42.5).unwrap()), 42.5);
+        let x: f64 = Money::new(-7.0).unwrap().into();
+        assert_eq!(x, -7.0);
     }
 }

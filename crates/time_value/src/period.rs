@@ -64,6 +64,26 @@ impl Period {
     }
 }
 
+/// The default `Period` is [`ZERO`](Period::ZERO) (ADR-0032).
+impl Default for Period {
+    fn default() -> Self {
+        Self::ZERO
+    }
+}
+
+/// Fallibly wraps an `f64` count, mirroring [`Period::new`] (ADR-0032).
+///
+/// # Errors
+///
+/// Returns [`TvmError::NegativePeriods`] if the value is negative or not finite.
+impl TryFrom<f64> for Period {
+    type Error = TvmError;
+
+    fn try_from(periods: f64) -> Result<Self, Self::Error> {
+        Self::new(periods)
+    }
+}
+
 impl fmt::Display for Period {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
@@ -89,5 +109,18 @@ mod tests {
         assert_eq!(Period::new(-1.0), Err(TvmError::NegativePeriods));
         assert_eq!(Period::new(f64::NAN), Err(TvmError::NegativePeriods));
         assert_eq!(Period::new(f64::INFINITY), Err(TvmError::NegativePeriods));
+    }
+
+    #[test]
+    fn default_is_zero() {
+        assert_eq!(Period::default(), Period::ZERO);
+    }
+
+    #[test]
+    fn try_from_mirrors_new() {
+        assert_eq!(Period::try_from(12.0).unwrap().value(), 12.0);
+        assert_eq!(Period::try_from(-1.0), Err(TvmError::NegativePeriods));
+        let n: Period = 3.0.try_into().unwrap();
+        assert_eq!(n.value(), 3.0);
     }
 }
