@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/time_value",
+    "crates/time-value-daycount",
     "crates/time-value-cli",
     "crates/time-value-mcp",
 ]
@@ -20,6 +21,8 @@ repository = "https://github.com/ojhermann-org/time-value"
 # Internal crates are depended on by workspace path so a breaking change cannot
 # compile-pass its consumers without updating them (ADR-0002).
 time_value = { path = "crates/time_value" }
+# Internal, unpublished (ADR-0030): ACT/365 day-count shared by both binaries.
+time-value-daycount = { path = "crates/time-value-daycount" }
 
 # Binary-only: CLI arg parsing and ergonomic error context. The core library
 # owns its own typed errors (ADR-0004); `anyhow` is for the binaries' `main`.

@@ -8,15 +8,18 @@ kebab-cased per the org ruleset). It is a deliberately type-heavy redesign for
 the `1.0` line — not a port of the old `0.x` series.
 
 The repo is a **Cargo workspace** (see `docs/adr/0002-workspace-layout.md`) of
-three crates:
+four crates — three primary, plus one internal support crate:
 
 - `crates/time_value` — the `no_std` core library (the published crate).
 - `crates/time-value-cli` — the `time-value` CLI binary.
 - `crates/time-value-mcp` — the `time-value-mcp` MCP server binary.
+- `crates/time-value-daycount` — internal, unpublished ACT/365 day-count shared
+  by the two binaries (`docs/adr/0030-shared-day-count-support-crate.md`).
 
 Dependencies point one way, toward the library; the binaries depend on
-`time_value` by workspace path. Async is contained to `-mcp`; the core stays
-synchronous and `no_std`. Architecture decisions are logged under `docs/adr/`.
+`time_value` (and on `time-value-daycount`) by workspace path. Async is contained
+to `-mcp`; the core stays synchronous and `no_std`. Architecture decisions are
+logged under `docs/adr/`.
 
 ## Design principles
 
@@ -83,6 +86,7 @@ deny.toml                 # cargo-deny: licenses + advisories + bans
 release-plz.toml          # release-plz: versions/changelogs/tags/GH releases
 crates/
   time_value/             # core library (no_std) — the published crate
+  time-value-daycount/     # internal ACT/365 day-count (unpublished, ADR-0030)
   time-value-cli/          # binary `time-value`
   time-value-mcp/          # binary `time-value-mcp`
 docs/adr/                 # architecture decision records
