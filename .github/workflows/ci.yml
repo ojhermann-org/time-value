@@ -8,6 +8,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Run in the merge queue too: the `ci` check must be produced against the
+  # `merge_group` ref, or a required-check merge queue would deadlock (see
+  # docs/adr/0012-ci-and-release-automation.md).
+  merge_group:
 
 # A newer push to the same ref supersedes an in-flight run.
 concurrency:
