@@ -2,11 +2,12 @@
 //!
 //! A thin calculator over the library's operations (see
 //! `docs/adr/0010-cli-surface.md`, extended by `docs/adr/0028-binary-surface-conventions.md`).
-//! Cashflow-series operations live under the `series` group (`npv`, `nfv`, `irr`,
-//! `mirr`, and the dated `xnpv` / `xirr`); single-sum `pv`/`fv` and the `annuity`
-//! subcommands round it out. `--rate` is a per-period rate (annual for the dated
-//! `series xnpv`/`xirr`); cashflows are positional. Results print as a plain
-//! number, or as JSON with `--json`.
+//! Commands are grouped by relationship family: `series` (net present/future
+//! value, IRR, MIRR, and the dated XNPV/XIRR), `single-sum` (present/future value
+//! and the solve-for `nper`/`rate` inverses), and `annuity` (ordinary,
+//! annuity-`due`, and perpetuity forms, plus the `nper`/`rate` solves). `--rate`
+//! is a per-period rate (annual for the dated `series xnpv`/`xirr`); cashflows are
+//! positional. Results print as a plain number, or as JSON with `--json`.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -35,31 +36,12 @@ enum Command {
         #[command(subcommand)]
         command: SeriesCommand,
     },
-    /// Present value of a single future amount.
-    Pv {
-        /// Per-period discount rate.
-        #[arg(long, allow_hyphen_values = true)]
-        rate: f64,
-        /// Number of periods (may be fractional).
-        #[arg(long, allow_hyphen_values = true)]
-        periods: f64,
-        /// The future amount to discount.
-        #[arg(long, allow_hyphen_values = true)]
-        future: f64,
+    /// Single-sum operations: present/future value and the solve-for inverses.
+    SingleSum {
+        #[command(subcommand)]
+        command: SingleSumCommand,
     },
-    /// Future value of a single present amount.
-    Fv {
-        /// Per-period rate.
-        #[arg(long, allow_hyphen_values = true)]
-        rate: f64,
-        /// Number of periods (may be fractional).
-        #[arg(long, allow_hyphen_values = true)]
-        periods: f64,
-        /// The present amount to compound.
-        #[arg(long, allow_hyphen_values = true)]
-        present: f64,
-    },
-    /// Ordinary (end-of-period) annuity calculations.
+    /// Annuity operations: ordinary, annuity-due, perpetuity, and the solves.
     Annuity {
         #[command(subcommand)]
         command: AnnuityCommand,
@@ -132,6 +114,58 @@ enum SeriesCommand {
 }
 
 #[derive(Subcommand)]
+enum SingleSumCommand {
+    /// Present value of a single future amount.
+    Pv {
+        /// Per-period discount rate.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// Number of periods (may be fractional).
+        #[arg(long, allow_hyphen_values = true)]
+        periods: f64,
+        /// The future amount to discount.
+        #[arg(long, allow_hyphen_values = true)]
+        future: f64,
+    },
+    /// Future value of a single present amount.
+    Fv {
+        /// Per-period rate.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// Number of periods (may be fractional).
+        #[arg(long, allow_hyphen_values = true)]
+        periods: f64,
+        /// The present amount to compound.
+        #[arg(long, allow_hyphen_values = true)]
+        present: f64,
+    },
+    /// Solve for the number of periods that grows a present to a future amount.
+    Nper {
+        /// Per-period rate.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The present amount.
+        #[arg(long, allow_hyphen_values = true)]
+        present: f64,
+        /// The future amount.
+        #[arg(long, allow_hyphen_values = true)]
+        future: f64,
+    },
+    /// Solve for the per-period rate that grows a present to a future amount.
+    Rate {
+        /// Number of periods (may be fractional).
+        #[arg(long, allow_hyphen_values = true)]
+        periods: f64,
+        /// The present amount.
+        #[arg(long, allow_hyphen_values = true)]
+        present: f64,
+        /// The future amount.
+        #[arg(long, allow_hyphen_values = true)]
+        future: f64,
+    },
+}
+
+#[derive(Subcommand)]
 enum AnnuityCommand {
     /// Present value of an annuity paying a fixed amount each period.
     Pv {
@@ -163,11 +197,97 @@ enum AnnuityCommand {
         #[arg(long, allow_hyphen_values = true)]
         present: f64,
     },
+    /// Solve for the number of level payments, from a present or future value.
+    Nper {
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The payment made at the end of each period.
+        #[arg(long, allow_hyphen_values = true)]
+        payment: f64,
+        /// Solve from this present value (mutually exclusive with --future).
+        #[arg(long, allow_hyphen_values = true)]
+        present: Option<f64>,
+        /// Solve from this future value (mutually exclusive with --present).
+        #[arg(long, allow_hyphen_values = true)]
+        future: Option<f64>,
+    },
+    /// Solve for the per-period rate of an annuity, from a present or future value.
+    Rate {
+        #[arg(long, allow_hyphen_values = true)]
+        periods: f64,
+        /// The payment made at the end of each period.
+        #[arg(long, allow_hyphen_values = true)]
+        payment: f64,
+        /// Solve from this present value (mutually exclusive with --future).
+        #[arg(long, allow_hyphen_values = true)]
+        present: Option<f64>,
+        /// Solve from this future value (mutually exclusive with --present).
+        #[arg(long, allow_hyphen_values = true)]
+        future: Option<f64>,
+    },
+    /// Present value of a level perpetuity (a payment forever).
+    Perpetuity {
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The payment made at the end of each period, forever.
+        #[arg(long, allow_hyphen_values = true)]
+        payment: f64,
+    },
+    /// Present value of a perpetuity whose payment grows each period.
+    GrowingPerpetuity {
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The per-period growth rate of the payment (must be below --rate).
+        #[arg(long, allow_hyphen_values = true)]
+        growth: f64,
+        /// The first payment (at the end of period 1).
+        #[arg(long, allow_hyphen_values = true)]
+        payment: f64,
+    },
+    /// Annuity-due (start-of-period payment) calculations.
+    Due {
+        #[command(subcommand)]
+        command: AnnuityDueCommand,
+    },
 }
 
-// The periodicity tag does not affect any result for the period-indexed series
+#[derive(Subcommand)]
+enum AnnuityDueCommand {
+    /// Present value of an annuity-due paying a fixed amount each period.
+    Pv {
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        #[arg(long, allow_hyphen_values = true)]
+        periods: f64,
+        /// The payment made at the start of each period.
+        #[arg(long, allow_hyphen_values = true)]
+        payment: f64,
+    },
+    /// Future value of an annuity-due paying a fixed amount each period.
+    Fv {
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        #[arg(long, allow_hyphen_values = true)]
+        periods: f64,
+        /// The payment made at the start of each period.
+        #[arg(long, allow_hyphen_values = true)]
+        payment: f64,
+    },
+    /// Level start-of-period payment that amortises a present value.
+    Payment {
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        #[arg(long, allow_hyphen_values = true)]
+        periods: f64,
+        /// The present value to amortise.
+        #[arg(long, allow_hyphen_values = true)]
+        present: f64,
+    },
+}
+
+// The periodicity tag does not affect any result for the period-indexed
 // operations (ADR-0010); the CLI fixes it to one marker to satisfy the type
-// parameter. The dated `xnpv`/`xirr` are intrinsically annual (ADR-0029).
+// parameter. The dated `series xnpv`/`xirr` are intrinsically annual (ADR-0029).
 type Per = Monthly;
 
 fn rate(value: f64) -> Result<Rate<Per>> {
@@ -188,6 +308,23 @@ fn money(value: f64) -> Result<Money> {
 
 fn cashflows(values: &[f64]) -> Result<Vec<Money>> {
     values.iter().copied().map(money).collect()
+}
+
+/// The value a solve-for operation is anchored to — exactly one of a present or a
+/// future amount. The two `--present`/`--future` flags are mutually exclusive and
+/// one is required.
+enum Anchor {
+    Present(f64),
+    Future(f64),
+}
+
+fn anchor(present: Option<f64>, future: Option<f64>) -> Result<Anchor> {
+    match (present, future) {
+        (Some(p), None) => Ok(Anchor::Present(p)),
+        (None, Some(f)) => Ok(Anchor::Future(f)),
+        (None, None) => bail!("provide either --present or --future"),
+        (Some(_), Some(_)) => bail!("--present and --future are mutually exclusive"),
+    }
 }
 
 // ---- Dated flows (XNPV/XIRR): ISO dates → ACT/365 year-offsets ----
@@ -266,8 +403,7 @@ fn dated_flows(pairs: &[String]) -> Result<Vec<DatedCashflow>> {
     Ok(flows)
 }
 
-/// Dispatch the `series` subcommands to the library, returning the JSON label and
-/// the result value.
+/// Dispatch the `series` subcommands, returning the JSON label and result value.
 fn run_series(command: SeriesCommand) -> Result<(&'static str, f64)> {
     Ok(match command {
         SeriesCommand::Npv {
@@ -325,10 +461,11 @@ fn run_series(command: SeriesCommand) -> Result<(&'static str, f64)> {
     })
 }
 
-fn run(cli: Cli) -> Result<()> {
-    let (label, value) = match cli.command {
-        Command::Series { command } => run_series(command)?,
-        Command::Pv {
+/// Dispatch the `single-sum` subcommands.
+#[allow(clippy::needless_pass_by_value)]
+fn run_single_sum(command: SingleSumCommand) -> Result<(&'static str, f64)> {
+    Ok(match command {
+        SingleSumCommand::Pv {
             rate: r,
             periods: n,
             future,
@@ -336,7 +473,7 @@ fn run(cli: Cli) -> Result<()> {
             "pv",
             single_sum::present_value(rate(r)?, period(n)?, money(future)?)?.value(),
         ),
-        Command::Fv {
+        SingleSumCommand::Fv {
             rate: r,
             periods: n,
             present,
@@ -344,33 +481,143 @@ fn run(cli: Cli) -> Result<()> {
             "fv",
             single_sum::future_value(rate(r)?, period(n)?, money(present)?)?.value(),
         ),
-        Command::Annuity { command } => match command {
-            AnnuityCommand::Pv {
-                rate: r,
-                periods: n,
-                payment,
-            } => (
-                "annuity_pv",
-                annuity::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
-            ),
-            AnnuityCommand::Fv {
-                rate: r,
-                periods: n,
-                payment,
-            } => (
-                "annuity_fv",
-                annuity::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
-            ),
-            AnnuityCommand::Payment {
-                rate: r,
-                periods: n,
-                present,
-            } => {
-                let pmt = annuity::payment(rate(r)?, period(n)?, money(present)?)
-                    .context("annuity payment is undefined (e.g. zero periods)")?;
-                ("annuity_payment", pmt.value())
+        SingleSumCommand::Nper {
+            rate: r,
+            present,
+            future,
+        } => {
+            let n = single_sum::periods(rate(r)?, money(present)?, money(future)?)
+                .context("number of periods is undefined for these inputs")?;
+            ("nper", n.value())
+        }
+        SingleSumCommand::Rate {
+            periods: n,
+            present,
+            future,
+        } => {
+            let r = single_sum::rate::<Per>(period(n)?, money(present)?, money(future)?)
+                .context("no rate solves these inputs")?;
+            ("rate", r.value())
+        }
+    })
+}
+
+/// Dispatch the `annuity` subcommands (ordinary, solves, perpetuities, and due).
+// By-value dispatch mirrors the other `run_*` helpers; the arms are all-`Copy`, so
+// clippy would rather borrow — but owning the parsed command here is the clearer shape.
+#[allow(clippy::needless_pass_by_value)]
+fn run_annuity(command: AnnuityCommand) -> Result<(&'static str, f64)> {
+    Ok(match command {
+        AnnuityCommand::Pv {
+            rate: r,
+            periods: n,
+            payment,
+        } => (
+            "annuity_pv",
+            annuity::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+        ),
+        AnnuityCommand::Fv {
+            rate: r,
+            periods: n,
+            payment,
+        } => (
+            "annuity_fv",
+            annuity::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+        ),
+        AnnuityCommand::Payment {
+            rate: r,
+            periods: n,
+            present,
+        } => {
+            let pmt = annuity::payment(rate(r)?, period(n)?, money(present)?)
+                .context("annuity payment is undefined (e.g. zero periods)")?;
+            ("annuity_payment", pmt.value())
+        }
+        AnnuityCommand::Nper {
+            rate: r,
+            payment,
+            present,
+            future,
+        } => {
+            let n = match anchor(present, future)? {
+                Anchor::Present(p) => annuity::periods(rate(r)?, money(payment)?, money(p)?),
+                Anchor::Future(f) => {
+                    annuity::periods_from_future(rate(r)?, money(payment)?, money(f)?)
+                }
             }
-        },
+            .context("number of periods is undefined for these inputs")?;
+            ("annuity_nper", n.value())
+        }
+        AnnuityCommand::Rate {
+            periods: n,
+            payment,
+            present,
+            future,
+        } => {
+            let r = match anchor(present, future)? {
+                Anchor::Present(p) => annuity::rate::<Per>(period(n)?, money(payment)?, money(p)?),
+                Anchor::Future(f) => {
+                    annuity::rate_from_future::<Per>(period(n)?, money(payment)?, money(f)?)
+                }
+            }
+            .context("no rate solves these inputs")?;
+            ("annuity_rate", r.value())
+        }
+        AnnuityCommand::Perpetuity { rate: r, payment } => {
+            let pv = annuity::perpetuity(rate(r)?, money(payment)?)
+                .context("perpetuity diverges (rate must exceed 0)")?;
+            ("annuity_perpetuity", pv.value())
+        }
+        AnnuityCommand::GrowingPerpetuity {
+            rate: r,
+            growth,
+            payment,
+        } => {
+            let pv = annuity::growing_perpetuity(rate(r)?, rate(growth)?, money(payment)?)
+                .context("growing perpetuity diverges (rate must exceed growth)")?;
+            ("annuity_growing_perpetuity", pv.value())
+        }
+        AnnuityCommand::Due { command } => run_annuity_due(command)?,
+    })
+}
+
+/// Dispatch the `annuity due` subcommands.
+#[allow(clippy::needless_pass_by_value)]
+fn run_annuity_due(command: AnnuityDueCommand) -> Result<(&'static str, f64)> {
+    Ok(match command {
+        AnnuityDueCommand::Pv {
+            rate: r,
+            periods: n,
+            payment,
+        } => (
+            "annuity_due_pv",
+            annuity::due::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+        ),
+        AnnuityDueCommand::Fv {
+            rate: r,
+            periods: n,
+            payment,
+        } => (
+            "annuity_due_fv",
+            annuity::due::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+        ),
+        AnnuityDueCommand::Payment {
+            rate: r,
+            periods: n,
+            present,
+        } => {
+            let pmt = annuity::due::payment(rate(r)?, period(n)?, money(present)?)
+                .context("annuity-due payment is undefined (e.g. zero periods)")?;
+            ("annuity_due_payment", pmt.value())
+        }
+    })
+}
+
+fn run(cli: Cli) -> Result<()> {
+    let (label, value) = match cli.command {
+        Command::Series { command } => run_series(command)?,
+        Command::SingleSum { command } => run_single_sum(command)?,
+        Command::Annuity { command } => run_annuity(command)?,
     };
 
     if cli.json {

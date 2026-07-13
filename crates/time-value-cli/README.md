@@ -31,14 +31,21 @@ time-value series xirr 2008-01-01:-10000 2008-03-01:2750 \
                        2008-10-30:4250 2009-02-15:3250 2009-04-01:2750   # 0.3734…
 time-value series xnpv --rate 0.10 2020-01-01:-100 2021-01-01:110
 
-# Single-sum present / future value
-time-value pv --rate 0.01 --periods 12 --future 1000    # 887.45
-time-value fv --rate 0.01 --periods 12 --present 1000   # 1126.83
+# Single sum: present/future value and the solve-for inverses
+time-value single-sum pv   --rate 0.01 --periods 12 --future 1000     # 887.45
+time-value single-sum fv   --rate 0.01 --periods 12 --present 1000    # 1126.83
+time-value single-sum nper --rate 0.01 --present 1000 --future 1126.83   # 12
+time-value single-sum rate --periods 12 --present 1000 --future 1126.83  # 0.01
 
-# Ordinary annuities
+# Annuities: ordinary, solves, perpetuities, and annuity-due
 time-value annuity pv      --rate 0.01 --periods 12 --payment 100
 time-value annuity fv      --rate 0.01 --periods 12 --payment 100
 time-value annuity payment --rate 0.01 --periods 12 --present 1125.51
+time-value annuity nper    --rate 0.01 --payment 100 --present 1125.51   # or --future
+time-value annuity rate    --periods 12 --payment 100 --present 1125.51  # or --future
+time-value annuity perpetuity         --rate 0.05 --payment 100          # 2000
+time-value annuity growing-perpetuity --rate 0.05 --growth 0.02 --payment 100
+time-value annuity due pv  --rate 0.01 --periods 12 --payment 100
 
 # JSON output for scripting
 time-value --json series npv --rate 0.01 -100 60 60    # {"npv":18.2237…}

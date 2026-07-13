@@ -19,21 +19,25 @@ use time_value::{
 };
 
 use crate::params::{
-    AnnuityPaymentInput, AnnuityValueInput, DatedFlow, DatedIrrInput, DatedSeriesInput,
-    FutureValueInput, IrrInput, MirrInput, PresentValueInput, SeriesInput,
+    AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput, DatedFlow,
+    DatedIrrInput, DatedSeriesInput, FutureValueInput, GrowingPerpetuityInput, IrrInput, MirrInput,
+    PerpetuityInput, PresentValueInput, SeriesInput, SingleSumPeriodsInput, SingleSumRateInput,
 };
 
 /// Told to clients on initialise.
 const INSTRUCTIONS: &str = "\
-Time-value-of-money calculations. Tools: `npv` and `nfv` (net present / future \
-value of a cashflow series at a per-period rate); `irr` (internal rate of return \
-of a series); `mirr` (modified IRR, with finance and reinvestment rates); `xnpv` \
-and `xirr` (net present value / internal rate of return of cashflows on irregular \
-ISO dates, at an annual rate); `present_value` and `future_value` (a single sum \
-over a number of periods); `annuity_present_value`, `annuity_future_value`, and \
-`annuity_payment` (ordinary, end-of-period annuities). Rates are per period \
-(annual for `xnpv`/`xirr`); cashflows are signed (outflow negative). Source: \
-https://github.com/ojhermann-org/time-value";
+Time-value-of-money calculations, grouped by family. Series: `npv`, `nfv` (net \
+present / future value at a per-period rate), `irr`, `mirr` (modified IRR, with \
+finance and reinvestment rates), and `xnpv`/`xirr` (cashflows on irregular ISO \
+dates, at an annual rate). Single sum: `single_sum_present_value`, \
+`single_sum_future_value`, and the solves `single_sum_periods` (NPER) / \
+`single_sum_rate` (RATE). Annuity: `annuity_present_value`, \
+`annuity_future_value`, `annuity_payment`, the solves `annuity_periods` / \
+`annuity_rate` (each from a present or future value), `annuity_perpetuity`, \
+`annuity_growing_perpetuity`, and the annuity-due forms \
+`annuity_due_present_value`, `annuity_due_future_value`, `annuity_due_payment`. \
+Rates are per period (annual for `xnpv`/`xirr`); cashflows are signed (outflow \
+negative). Source: https://github.com/ojhermann-org/time-value";
 
 /// The MCP server. Stateless: the operations are pure functions of their inputs.
 #[derive(Clone)]
@@ -138,10 +142,10 @@ impl TimeValueServer {
     }
 
     #[tool(
-        name = "present_value",
+        name = "single_sum_present_value",
         description = "Present value of a single future amount, discounted at a per-period rate over a (possibly fractional) number of periods."
     )]
-    fn present_value(
+    fn single_sum_present_value(
         &self,
         Parameters(input): Parameters<PresentValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -152,14 +156,14 @@ impl TimeValueServer {
         )
         .map_err(tvm)?
         .value();
-        Ok(result("present_value", value))
+        Ok(result("single_sum_present_value", value))
     }
 
     #[tool(
-        name = "future_value",
+        name = "single_sum_future_value",
         description = "Future value of a single present amount, compounded at a per-period rate over a (possibly fractional) number of periods."
     )]
-    fn future_value(
+    fn single_sum_future_value(
         &self,
         Parameters(input): Parameters<FutureValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
@@ -170,7 +174,41 @@ impl TimeValueServer {
         )
         .map_err(tvm)?
         .value();
-        Ok(result("future_value", value))
+        Ok(result("single_sum_future_value", value))
+    }
+
+    #[tool(
+        name = "single_sum_periods",
+        description = "Solve for the number of periods that grows a present amount to a future amount at a per-period rate (NPER)."
+    )]
+    fn single_sum_periods(
+        &self,
+        Parameters(input): Parameters<SingleSumPeriodsInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let periods = single_sum::periods(
+            rate(input.rate)?,
+            money(input.present)?,
+            money(input.future)?,
+        )
+        .map_err(tvm)?;
+        Ok(result("single_sum_periods", periods.value()))
+    }
+
+    #[tool(
+        name = "single_sum_rate",
+        description = "Solve for the per-period rate that grows a present amount to a future amount over a number of periods (RATE)."
+    )]
+    fn single_sum_rate(
+        &self,
+        Parameters(input): Parameters<SingleSumRateInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let solved = single_sum::rate::<Monthly>(
+            period(input.periods)?,
+            money(input.present)?,
+            money(input.future)?,
+        )
+        .map_err(tvm)?;
+        Ok(result("single_sum_rate", solved.value()))
     }
 
     #[tool(
@@ -225,6 +263,127 @@ impl TimeValueServer {
         .map_err(tvm)?;
         Ok(result("annuity_payment", payment.value()))
     }
+
+    #[tool(
+        name = "annuity_periods",
+        description = "Solve for the number of level end-of-period payments, from a present value or a future value (provide exactly one)."
+    )]
+    fn annuity_periods(
+        &self,
+        Parameters(input): Parameters<AnnuityPeriodsInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let r = rate(input.rate)?;
+        let pmt = money(input.payment)?;
+        let periods = match anchor(input.present, input.future)? {
+            Anchor::Present(p) => annuity::periods(r, pmt, money(p)?),
+            Anchor::Future(f) => annuity::periods_from_future(r, pmt, money(f)?),
+        }
+        .map_err(tvm)?;
+        Ok(result("annuity_periods", periods.value()))
+    }
+
+    #[tool(
+        name = "annuity_rate",
+        description = "Solve for the per-period rate of an annuity, from a present value or a future value (provide exactly one)."
+    )]
+    fn annuity_rate(
+        &self,
+        Parameters(input): Parameters<AnnuityRateInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let n = period(input.periods)?;
+        let pmt = money(input.payment)?;
+        let solved = match anchor(input.present, input.future)? {
+            Anchor::Present(p) => annuity::rate::<Monthly>(n, pmt, money(p)?),
+            Anchor::Future(f) => annuity::rate_from_future::<Monthly>(n, pmt, money(f)?),
+        }
+        .map_err(tvm)?;
+        Ok(result("annuity_rate", solved.value()))
+    }
+
+    #[tool(
+        name = "annuity_perpetuity",
+        description = "Present value of a level perpetuity — a fixed end-of-period payment forever — at a per-period rate (which must exceed 0)."
+    )]
+    fn annuity_perpetuity(
+        &self,
+        Parameters(input): Parameters<PerpetuityInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = annuity::perpetuity(rate(input.rate)?, money(input.payment)?)
+            .map_err(tvm)?
+            .value();
+        Ok(result("annuity_perpetuity", value))
+    }
+
+    #[tool(
+        name = "annuity_growing_perpetuity",
+        description = "Present value of a perpetuity whose payment grows each period, at a per-period rate that must exceed the growth rate."
+    )]
+    fn annuity_growing_perpetuity(
+        &self,
+        Parameters(input): Parameters<GrowingPerpetuityInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = annuity::growing_perpetuity(
+            rate(input.rate)?,
+            rate(input.growth)?,
+            money(input.payment)?,
+        )
+        .map_err(tvm)?
+        .value();
+        Ok(result("annuity_growing_perpetuity", value))
+    }
+
+    #[tool(
+        name = "annuity_due_present_value",
+        description = "Present value of an annuity-due that pays a fixed amount at the start of each period."
+    )]
+    fn annuity_due_present_value(
+        &self,
+        Parameters(input): Parameters<AnnuityValueInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = annuity::due::present_value(
+            rate(input.rate)?,
+            period(input.periods)?,
+            money(input.payment)?,
+        )
+        .map_err(tvm)?
+        .value();
+        Ok(result("annuity_due_present_value", value))
+    }
+
+    #[tool(
+        name = "annuity_due_future_value",
+        description = "Future value of an annuity-due that pays a fixed amount at the start of each period."
+    )]
+    fn annuity_due_future_value(
+        &self,
+        Parameters(input): Parameters<AnnuityValueInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = annuity::due::future_value(
+            rate(input.rate)?,
+            period(input.periods)?,
+            money(input.payment)?,
+        )
+        .map_err(tvm)?
+        .value();
+        Ok(result("annuity_due_future_value", value))
+    }
+
+    #[tool(
+        name = "annuity_due_payment",
+        description = "The level start-of-period payment that amortises a present value over a number of periods at a per-period rate."
+    )]
+    fn annuity_due_payment(
+        &self,
+        Parameters(input): Parameters<AnnuityPaymentInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let payment = annuity::due::payment(
+            rate(input.rate)?,
+            period(input.periods)?,
+            money(input.present)?,
+        )
+        .map_err(tvm)?;
+        Ok(result("annuity_due_payment", payment.value()))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -262,6 +421,28 @@ fn money(value: f64) -> Result<Money, ErrorData> {
 
 fn cashflows(values: &[f64]) -> Result<Vec<Money>, ErrorData> {
     values.iter().copied().map(money).collect()
+}
+
+/// The value a solve-for operation is anchored to — exactly one of a present or a
+/// future amount. `present` and `future` are mutually exclusive and one is required.
+enum Anchor {
+    Present(f64),
+    Future(f64),
+}
+
+fn anchor(present: Option<f64>, future: Option<f64>) -> Result<Anchor, ErrorData> {
+    match (present, future) {
+        (Some(p), None) => Ok(Anchor::Present(p)),
+        (None, Some(f)) => Ok(Anchor::Future(f)),
+        (None, None) => Err(ErrorData::invalid_params(
+            "provide either `present` or `future`".to_string(),
+            None,
+        )),
+        (Some(_), Some(_)) => Err(ErrorData::invalid_params(
+            "`present` and `future` are mutually exclusive".to_string(),
+            None,
+        )),
+    }
 }
 
 // ---- Dated flows (XNPV/XIRR): ISO dates → ACT/365 year-offsets ----

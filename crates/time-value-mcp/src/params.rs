@@ -71,7 +71,7 @@ pub(crate) struct DatedIrrInput {
     pub guess: f64,
 }
 
-/// Input for the single-sum `present_value` tool.
+/// Input for the `single_sum_present_value` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct PresentValueInput {
     /// Per-period discount rate.
@@ -82,7 +82,7 @@ pub(crate) struct PresentValueInput {
     pub future: f64,
 }
 
-/// Input for the single-sum `future_value` tool.
+/// Input for the `single_sum_future_value` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct FutureValueInput {
     /// Per-period rate.
@@ -91,6 +91,80 @@ pub(crate) struct FutureValueInput {
     pub periods: f64,
     /// The present amount to compound forward.
     pub present: f64,
+}
+
+/// Input for the `single_sum_periods` tool (solve for the number of periods).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct SingleSumPeriodsInput {
+    /// Per-period rate.
+    pub rate: f64,
+    /// The present amount.
+    pub present: f64,
+    /// The future amount.
+    pub future: f64,
+}
+
+/// Input for the `single_sum_rate` tool (solve for the per-period rate).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct SingleSumRateInput {
+    /// Number of periods (may be fractional).
+    pub periods: f64,
+    /// The present amount.
+    pub present: f64,
+    /// The future amount.
+    pub future: f64,
+}
+
+/// Input for the `annuity_periods` tool. Provide exactly one of `present` or
+/// `future` (the value the payment stream is anchored to).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct AnnuityPeriodsInput {
+    /// Per-period rate.
+    pub rate: f64,
+    /// The payment made at the end of each period.
+    pub payment: f64,
+    /// Solve from this present value (mutually exclusive with `future`).
+    #[serde(default)]
+    pub present: Option<f64>,
+    /// Solve from this future value (mutually exclusive with `present`).
+    #[serde(default)]
+    pub future: Option<f64>,
+}
+
+/// Input for the `annuity_rate` tool. Provide exactly one of `present` or
+/// `future`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct AnnuityRateInput {
+    /// Number of periods (may be fractional).
+    pub periods: f64,
+    /// The payment made at the end of each period.
+    pub payment: f64,
+    /// Solve from this present value (mutually exclusive with `future`).
+    #[serde(default)]
+    pub present: Option<f64>,
+    /// Solve from this future value (mutually exclusive with `present`).
+    #[serde(default)]
+    pub future: Option<f64>,
+}
+
+/// Input for the `annuity_perpetuity` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct PerpetuityInput {
+    /// Per-period rate (must exceed 0).
+    pub rate: f64,
+    /// The payment made at the end of each period, forever.
+    pub payment: f64,
+}
+
+/// Input for the `annuity_growing_perpetuity` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct GrowingPerpetuityInput {
+    /// Per-period rate (must exceed the growth rate).
+    pub rate: f64,
+    /// The per-period growth rate of the payment.
+    pub growth: f64,
+    /// The first payment (at the end of period 1).
+    pub payment: f64,
 }
 
 /// Input for the `annuity_present_value` and `annuity_future_value` tools.

@@ -107,6 +107,7 @@ fn an_invalid_date_fails() {
 fn present_value_of_a_single_sum() {
     time_value()
         .args([
+            "single-sum",
             "pv",
             "--rate",
             "0.01",
@@ -124,6 +125,7 @@ fn present_value_of_a_single_sum() {
 fn future_value_of_a_single_sum() {
     time_value()
         .args([
+            "single-sum",
             "fv",
             "--rate",
             "0.01",
@@ -135,6 +137,45 @@ fn future_value_of_a_single_sum() {
         .assert()
         .success()
         .stdout(predicate::str::starts_with("1126.8"));
+}
+
+#[test]
+fn single_sum_nper_inverts_growth() {
+    // 1000 grows to 1126.83 at 1%/period -> ~12 periods.
+    time_value()
+        .args([
+            "single-sum",
+            "nper",
+            "--rate",
+            "0.01",
+            "--present",
+            "1000",
+            "--future",
+            "1126.825",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("12.0").or(predicate::str::starts_with("11.9")));
+}
+
+#[test]
+fn single_sum_rate_inverts_growth() {
+    time_value()
+        .args([
+            "single-sum",
+            "rate",
+            "--periods",
+            "12",
+            "--present",
+            "1000",
+            "--future",
+            "1126.825",
+        ])
+        .assert()
+        .success()
+        // The future is ~1000·1.01¹², so the solved rate is ~0.01 (printed as
+        // 0.00999997…); accept either rounding face.
+        .stdout(predicate::str::starts_with("0.0099").or(predicate::str::starts_with("0.01")));
 }
 
 #[test]
@@ -174,6 +215,108 @@ fn annuity_payment_amortises_a_present_value() {
 }
 
 #[test]
+fn annuity_nper_solves_from_present() {
+    // A 100/period annuity priced at 1125.51 at 1% -> ~12 payments.
+    time_value()
+        .args([
+            "annuity",
+            "nper",
+            "--rate",
+            "0.01",
+            "--payment",
+            "100",
+            "--present",
+            "1125.508",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("12.0").or(predicate::str::starts_with("11.9")));
+}
+
+#[test]
+fn annuity_rate_solves_from_present() {
+    time_value()
+        .args([
+            "annuity",
+            "rate",
+            "--periods",
+            "12",
+            "--payment",
+            "100",
+            "--present",
+            "1125.508",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.0099").or(predicate::str::starts_with("0.01")));
+}
+
+#[test]
+fn annuity_nper_requires_a_basis() {
+    time_value()
+        .args(["annuity", "nper", "--rate", "0.01", "--payment", "100"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--present").or(predicate::str::contains("--future")));
+}
+
+#[test]
+fn annuity_perpetuity_present_value() {
+    // 100/period forever at 5% -> 2000.
+    time_value()
+        .args([
+            "annuity",
+            "perpetuity",
+            "--rate",
+            "0.05",
+            "--payment",
+            "100",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("2000"));
+}
+
+#[test]
+fn annuity_growing_perpetuity_present_value() {
+    // 100 growing 2%, discounted 5% -> 100 / (0.05 - 0.02) = 3333.33…
+    time_value()
+        .args([
+            "annuity",
+            "growing-perpetuity",
+            "--rate",
+            "0.05",
+            "--growth",
+            "0.02",
+            "--payment",
+            "100",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("3333"));
+}
+
+#[test]
+fn annuity_due_present_value_exceeds_ordinary() {
+    // Annuity-due PV = ordinary PV * (1 + r); at 1% -> 1125.51 * 1.01 ≈ 1136.76.
+    time_value()
+        .args([
+            "annuity",
+            "due",
+            "pv",
+            "--rate",
+            "0.01",
+            "--periods",
+            "12",
+            "--payment",
+            "100",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("1136.7"));
+}
+
+#[test]
 fn json_output_is_keyed_by_operation() {
     time_value()
         .args([
@@ -197,7 +340,16 @@ fn an_invalid_rate_fails() {
 fn an_overflowing_result_fails_instead_of_printing_inf() {
     // 2^2000 overflows f64; the CLI must error, not print `inf` with exit 0.
     time_value()
-        .args(["fv", "--rate", "1", "--periods", "2000", "--present", "1e6"])
+        .args([
+            "single-sum",
+            "fv",
+            "--rate",
+            "1",
+            "--periods",
+            "2000",
+            "--present",
+            "1e6",
+        ])
         .assert()
         .failure()
         .stderr(predicate::str::contains("finite"));
@@ -209,6 +361,7 @@ fn an_overflowing_result_fails_in_json_mode_too() {
     time_value()
         .args([
             "--json",
+            "single-sum",
             "fv",
             "--rate",
             "1",
