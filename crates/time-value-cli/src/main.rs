@@ -5,17 +5,18 @@
 //! Commands are grouped by relationship family: `series` (net present/future
 //! value, IRR, MIRR, and the dated XNPV/XIRR), `single-sum` (present/future value
 //! and the solve-for `nper`/`rate` inverses), `annuity` (ordinary, annuity-`due`,
-//! and perpetuity forms, plus the `nper`/`rate` solves), and `rate` (conversions
+//! and perpetuity forms, plus the `nper`/`rate` solves), `rate` (conversions
 //! between periodicities and nominal/effective quotes — the only family that
-//! takes a periodicity). `--rate` is a per-period rate (annual for the dated
-//! `series xnpv`/`xirr`); cashflows are positional. Results print as a plain
-//! number, or as JSON with `--json`.
+//! takes a periodicity), and `amortize` (a schedule). `--rate` is a per-period
+//! rate (annual for the dated `series xnpv`/`xirr`); cashflows are positional.
+//! Most results print as a plain number, or as JSON with `--json`; `amortize`
+//! prints a table, or a JSON array of row objects under `--json`.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use time_value::{
-    annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money, Monthly, Period,
-    Rate,
+    amortization, annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money,
+    Monthly, Period, Rate,
 };
 
 /// Type-safe time-value-of-money calculations.
@@ -52,6 +53,21 @@ enum Command {
     Rate {
         #[command(subcommand)]
         command: RateCommand,
+    },
+    /// Amortization schedule: one row per period until the balance is retired.
+    Amortize {
+        /// Per-period rate.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The principal to amortise.
+        #[arg(long, allow_hyphen_values = true)]
+        principal: f64,
+        /// Amortise over this many periods (mutually exclusive with --payment).
+        #[arg(long, allow_hyphen_values = true)]
+        periods: Option<f64>,
+        /// Amortise with this level payment (mutually exclusive with --periods).
+        #[arg(long, allow_hyphen_values = true)]
+        payment: Option<f64>,
     },
 }
 
@@ -756,20 +772,86 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
     })
 }
 
-fn run(cli: Cli) -> Result<()> {
-    let (label, value) = match cli.command {
-        Command::Series { command } => run_series(command)?,
-        Command::SingleSum { command } => run_single_sum(command)?,
-        Command::Annuity { command } => run_annuity(command)?,
-        Command::Rate { command } => run_rate(command)?,
-    };
+/// The scalar (single-value) operations. Tabular `amortize` is handled separately.
+fn run_scalar(command: Command) -> Result<(&'static str, f64)> {
+    match command {
+        Command::Series { command } => run_series(command),
+        Command::SingleSum { command } => run_single_sum(command),
+        Command::Annuity { command } => run_annuity(command),
+        Command::Rate { command } => run_rate(command),
+        Command::Amortize { .. } => unreachable!("amortize is handled by run_amortize"),
+    }
+}
 
-    if cli.json {
-        let mut object = serde_json::Map::new();
-        object.insert(label.to_owned(), serde_json::json!(value));
-        println!("{}", serde_json::Value::Object(object));
+/// Print an amortization schedule: aligned rows, or a JSON array of row objects
+/// under `--json` (ADR-0028's tabular output convention).
+fn run_amortize(
+    json: bool,
+    r: f64,
+    principal: f64,
+    periods: Option<f64>,
+    payment: Option<f64>,
+) -> Result<()> {
+    let rate = rate(r)?;
+    let principal = money(principal)?;
+    let schedule = match (periods, payment) {
+        (Some(n), None) => amortization::Schedule::<Per>::for_term(rate, period(n)?, principal),
+        (None, Some(p)) => amortization::Schedule::<Per>::with_payment(rate, money(p)?, principal),
+        (None, None) => bail!("provide either --periods or --payment"),
+        (Some(_), Some(_)) => bail!("--periods and --payment are mutually exclusive"),
+    }
+    .context("amortization schedule is undefined for these inputs")?;
+
+    let installments: Vec<_> = schedule.collect();
+    if json {
+        let rows: Vec<serde_json::Value> = installments
+            .iter()
+            .map(|i| {
+                serde_json::json!({
+                    "period": i.period,
+                    "payment": i.payment.value(),
+                    "interest": i.interest.value(),
+                    "principal": i.principal.value(),
+                    "balance": i.balance.value(),
+                })
+            })
+            .collect();
+        println!("{}", serde_json::Value::Array(rows));
     } else {
-        println!("{value}");
+        println!("period\tpayment\tinterest\tprincipal\tbalance");
+        for i in &installments {
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                i.period,
+                i.payment.value(),
+                i.interest.value(),
+                i.principal.value(),
+                i.balance.value(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run(cli: Cli) -> Result<()> {
+    let json = cli.json;
+    match cli.command {
+        Command::Amortize {
+            rate: r,
+            principal,
+            periods,
+            payment,
+        } => return run_amortize(json, r, principal, periods, payment),
+        command => {
+            let (label, value) = run_scalar(command)?;
+            if json {
+                let mut object = serde_json::Map::new();
+                object.insert(label.to_owned(), serde_json::json!(value));
+                println!("{}", serde_json::Value::Object(object));
+            } else {
+                println!("{value}");
+            }
+        }
     }
     Ok(())
 }

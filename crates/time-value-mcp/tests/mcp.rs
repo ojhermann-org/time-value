@@ -196,6 +196,39 @@ fn rate_rejects_an_unknown_periodicity() {
 }
 
 #[test]
+fn amortize_tool_returns_a_schedule() {
+    // 1000 at 10% paying 500 → three installments, last clears the balance.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"amortize","arguments":{"rate":0.10,"principal":1000,"payment":500}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("amortize"))
+        .stdout(predicate::str::contains("\"period\":3"))
+        .stdout(predicate::str::contains("\"balance\":0"));
+}
+
+#[test]
+fn amortize_requires_periods_or_payment() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"amortize","arguments":{"rate":0.10,"principal":1000}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("periods").or(predicate::str::contains("payment")));
+}
+
+#[test]
 fn an_overflowing_result_is_an_error_not_null() {
     // Previously this returned `{"future_value":null}` with isError:false — a
     // silent non-answer. Now it is a proper error (ADR-0021).

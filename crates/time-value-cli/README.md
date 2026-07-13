@@ -53,8 +53,13 @@ time-value rate convert     --rate 0.01 --from monthly --to quarterly    # 0.030
 time-value rate nominal     --rate 0.01 --periodicity monthly            # 0.12 (APR)
 time-value rate from-nominal --nominal 0.12 --periodicity monthly        # 0.01
 
+# Amortization schedule (a table; --json gives an array of row objects)
+time-value amortize --rate 0.01 --principal 1125.508 --periods 12
+time-value amortize --rate 0.10 --principal 1000 --payment 500
+
 # JSON output for scripting
 time-value --json series npv --rate 0.01 -100 60 60    # {"npv":18.2237…}
+time-value --json amortize --rate 0.10 --principal 1000 --payment 500  # [{"period":1,…},…]
 ```
 
 ## License

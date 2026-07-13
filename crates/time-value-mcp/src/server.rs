@@ -14,14 +14,14 @@ use rmcp::{
     tool, tool_handler, tool_router, ErrorData, ServerHandler,
 };
 use time_value::{
-    annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money, Monthly, Period,
-    Rate, TvmError,
+    amortization, annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money,
+    Monthly, Period, Rate, TvmError,
 };
 
 use crate::params::{
-    AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput, DatedFlow,
-    DatedIrrInput, DatedSeriesInput, FutureValueInput, GrowingPerpetuityInput, IrrInput, MirrInput,
-    PerpetuityInput, PresentValueInput, RateConvertInput, RateEffectiveAnnualInput,
+    AmortizeInput, AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput,
+    DatedFlow, DatedIrrInput, DatedSeriesInput, FutureValueInput, GrowingPerpetuityInput, IrrInput,
+    MirrInput, PerpetuityInput, PresentValueInput, RateConvertInput, RateEffectiveAnnualInput,
     RateFromNominalInput, SeriesInput, SingleSumPeriodsInput, SingleSumRateInput,
 };
 
@@ -83,9 +83,11 @@ dates, at an annual rate). Single sum: `single_sum_present_value`, \
 `annuity_due_present_value`, `annuity_due_future_value`, `annuity_due_payment`. \
 Rate conversions: `rate_effective_annual` (EAR), `rate_convert` (between \
 periodicities), `rate_from_nominal` and `rate_nominal` (nominal/APR) — each takes \
-a periodicity (daily, weekly, monthly, quarterly, semi-annual, annual). Rates are \
-per period (annual for `xnpv`/`xirr`); cashflows are signed (outflow negative). \
-Source: https://github.com/ojhermann-org/time-value";
+a periodicity (daily, weekly, monthly, quarterly, semi-annual, annual). \
+`amortize` returns a schedule (an array of period/payment/interest/principal/\
+balance rows) from a term or a level payment. Rates are per period (annual for \
+`xnpv`/`xirr`); cashflows are signed (outflow negative). Source: \
+https://github.com/ojhermann-org/time-value";
 
 /// The MCP server. Stateless: the operations are pure functions of their inputs.
 #[derive(Clone)]
@@ -499,6 +501,58 @@ impl TimeValueServer {
                 .map_err(tvm)?
         });
         Ok(result("rate_nominal", value))
+    }
+
+    #[tool(
+        name = "amortize",
+        description = "An amortization schedule: one row (period, payment, interest, principal, balance) per period until the balance is retired. Provide exactly one of `periods` (a term) or `payment` (a level payment)."
+    )]
+    fn amortize(
+        &self,
+        Parameters(input): Parameters<AmortizeInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let r = rate(input.rate)?;
+        let principal = money(input.principal)?;
+        let schedule = match (input.periods, input.payment) {
+            (Some(n), None) => {
+                amortization::Schedule::<Monthly>::for_term(r, period(n)?, principal)
+            }
+            (None, Some(p)) => {
+                amortization::Schedule::<Monthly>::with_payment(r, money(p)?, principal)
+            }
+            (None, None) => {
+                return Err(ErrorData::invalid_params(
+                    "provide either `periods` or `payment`".to_string(),
+                    None,
+                ))
+            }
+            (Some(_), Some(_)) => {
+                return Err(ErrorData::invalid_params(
+                    "`periods` and `payment` are mutually exclusive".to_string(),
+                    None,
+                ))
+            }
+        }
+        .map_err(tvm)?;
+
+        let rows: Vec<serde_json::Value> = schedule
+            .map(|i| {
+                serde_json::json!({
+                    "period": i.period,
+                    "payment": i.payment.value(),
+                    "interest": i.interest.value(),
+                    "principal": i.principal.value(),
+                    "balance": i.balance.value(),
+                })
+            })
+            .collect();
+        // One field keyed by the operation (like the scalar tools), whose value is
+        // the tabular array (ADR-0028).
+        let mut object = serde_json::Map::new();
+        object.insert("amortize".to_string(), serde_json::Value::Array(rows));
+        Ok(CallToolResult::structured(serde_json::Value::Object(
+            object,
+        )))
     }
 }
 
