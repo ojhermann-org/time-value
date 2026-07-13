@@ -392,6 +392,73 @@ fn rate_rejects_an_unknown_periodicity() {
 }
 
 #[test]
+fn amortize_over_a_term_prints_a_table() {
+    // 1000 at 10% paying 500: three rows (500, 500, 176 stub), balance to 0.
+    time_value()
+        .args([
+            "amortize",
+            "--rate",
+            "0.10",
+            "--principal",
+            "1000",
+            "--payment",
+            "500",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("period\tpayment"))
+        // The final installment clears the balance.
+        .stdout(predicate::str::contains("3\t176"));
+}
+
+#[test]
+fn amortize_json_is_an_array_of_rows() {
+    time_value()
+        .args([
+            "--json",
+            "amortize",
+            "--rate",
+            "0.10",
+            "--principal",
+            "1000",
+            "--payment",
+            "500",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("[{"))
+        .stdout(predicate::str::contains("\"period\":1"))
+        .stdout(predicate::str::contains("\"balance\":0"));
+}
+
+#[test]
+fn amortize_requires_periods_or_payment() {
+    time_value()
+        .args(["amortize", "--rate", "0.01", "--principal", "1000"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--periods").or(predicate::str::contains("--payment")));
+}
+
+#[test]
+fn amortize_rejects_a_non_amortizing_payment() {
+    // A payment below the first period's interest never retires the balance.
+    time_value()
+        .args([
+            "amortize",
+            "--rate",
+            "0.10",
+            "--principal",
+            "1000",
+            "--payment",
+            "50",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("undefined"));
+}
+
+#[test]
 fn json_output_is_keyed_by_operation() {
     time_value()
         .args([
