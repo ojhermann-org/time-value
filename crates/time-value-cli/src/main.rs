@@ -576,7 +576,7 @@ fn run_single_sum(command: SingleSumCommand) -> Result<(&'static str, f64)> {
             periods: n,
             future,
         } => (
-            "pv",
+            "single_sum_present_value",
             single_sum::present_value(rate(r)?, period(n)?, money(future)?)?.value(),
         ),
         SingleSumCommand::Fv {
@@ -584,7 +584,7 @@ fn run_single_sum(command: SingleSumCommand) -> Result<(&'static str, f64)> {
             periods: n,
             present,
         } => (
-            "fv",
+            "single_sum_future_value",
             single_sum::future_value(rate(r)?, period(n)?, money(present)?)?.value(),
         ),
         SingleSumCommand::Nper {
@@ -594,7 +594,7 @@ fn run_single_sum(command: SingleSumCommand) -> Result<(&'static str, f64)> {
         } => {
             let n = single_sum::periods(rate(r)?, money(present)?, money(future)?)
                 .context("number of periods is undefined for these inputs")?;
-            ("nper", n.value())
+            ("single_sum_periods", n.value())
         }
         SingleSumCommand::Rate {
             periods: n,
@@ -603,7 +603,7 @@ fn run_single_sum(command: SingleSumCommand) -> Result<(&'static str, f64)> {
         } => {
             let r = single_sum::rate::<Per>(period(n)?, money(present)?, money(future)?)
                 .context("no rate solves these inputs")?;
-            ("rate", r.value())
+            ("single_sum_rate", r.value())
         }
     })
 }
@@ -619,7 +619,7 @@ fn run_annuity(command: AnnuityCommand) -> Result<(&'static str, f64)> {
             periods: n,
             payment,
         } => (
-            "annuity_pv",
+            "annuity_present_value",
             annuity::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
         ),
         AnnuityCommand::Fv {
@@ -627,7 +627,7 @@ fn run_annuity(command: AnnuityCommand) -> Result<(&'static str, f64)> {
             periods: n,
             payment,
         } => (
-            "annuity_fv",
+            "annuity_future_value",
             annuity::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
         ),
         AnnuityCommand::Payment {
@@ -652,7 +652,7 @@ fn run_annuity(command: AnnuityCommand) -> Result<(&'static str, f64)> {
                 }
             }
             .context("number of periods is undefined for these inputs")?;
-            ("annuity_nper", n.value())
+            ("annuity_periods", n.value())
         }
         AnnuityCommand::Rate {
             periods: n,
@@ -696,7 +696,7 @@ fn run_annuity_due(command: AnnuityDueCommand) -> Result<(&'static str, f64)> {
             periods: n,
             payment,
         } => (
-            "annuity_due_pv",
+            "annuity_due_present_value",
             annuity::due::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
         ),
         AnnuityDueCommand::Fv {
@@ -704,7 +704,7 @@ fn run_annuity_due(command: AnnuityDueCommand) -> Result<(&'static str, f64)> {
             periods: n,
             payment,
         } => (
-            "annuity_due_fv",
+            "annuity_due_future_value",
             annuity::due::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
         ),
         AnnuityDueCommand::Payment {
@@ -733,7 +733,7 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                     .context("effective annual rate is undefined for this input")?
                     .value()
             });
-            ("ear", ear)
+            ("rate_effective_annual", ear)
         }
         RateCommand::Convert { rate: r, from, to } => {
             let converted = dispatch_periodicity!(from.as_str(), P => {
@@ -745,7 +745,7 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                         .value()
                 })
             });
-            ("convert", converted)
+            ("rate_convert", converted)
         }
         RateCommand::FromNominal {
             nominal,
@@ -756,7 +756,7 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                     .context("invalid nominal rate")?
                     .value()
             });
-            ("from_nominal", periodic)
+            ("rate_from_nominal", periodic)
         }
         RateCommand::Nominal {
             rate: r,
@@ -767,7 +767,7 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                     .nominal_annual()
                     .context("nominal annual rate is undefined for this input")?
             });
-            ("nominal", nominal)
+            ("rate_nominal", nominal)
         }
     })
 }

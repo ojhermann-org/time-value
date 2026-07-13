@@ -470,6 +470,68 @@ fn json_output_is_keyed_by_operation() {
 }
 
 #[test]
+fn json_keys_match_the_mcp_tool_names() {
+    // ADR-0028 §4: the `--json` key is the operation's MCP tool name, so the two
+    // binary surfaces agree. Bare acronyms (`npv`) stay bare; every other key is
+    // family-prefixed and spelled out.
+    let cases: &[(&[&str], &str)] = &[
+        (
+            &[
+                "single-sum",
+                "pv",
+                "--rate",
+                "0.01",
+                "--periods",
+                "12",
+                "--future",
+                "1000",
+            ],
+            "\"single_sum_present_value\"",
+        ),
+        (
+            &[
+                "annuity",
+                "pv",
+                "--rate",
+                "0.01",
+                "--periods",
+                "12",
+                "--payment",
+                "100",
+            ],
+            "\"annuity_present_value\"",
+        ),
+        (
+            &[
+                "annuity",
+                "due",
+                "pv",
+                "--rate",
+                "0.01",
+                "--periods",
+                "12",
+                "--payment",
+                "100",
+            ],
+            "\"annuity_due_present_value\"",
+        ),
+        (
+            &["rate", "ear", "--rate", "0.01", "--periodicity", "monthly"],
+            "\"rate_effective_annual\"",
+        ),
+    ];
+    for (op_args, expected_key) in cases {
+        let mut args = vec!["--json"];
+        args.extend_from_slice(op_args);
+        time_value()
+            .args(&args)
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(*expected_key));
+    }
+}
+
+#[test]
 fn an_invalid_rate_fails() {
     time_value()
         .args(["series", "npv", "--rate", "-1.5", "-100", "60"])
@@ -499,7 +561,7 @@ fn an_overflowing_result_fails_instead_of_printing_inf() {
 
 #[test]
 fn an_overflowing_result_fails_in_json_mode_too() {
-    // Previously this printed `{"fv":null}` with exit 0; now it is an error.
+    // Previously this printed `{"single_sum_future_value":null}` with exit 0; now it is an error.
     time_value()
         .args([
             "--json",
