@@ -5,7 +5,7 @@ use core::marker::PhantomData;
 
 #[cfg(any(feature = "std", feature = "libm"))]
 use crate::math::powf;
-use crate::root::{abs, within};
+use crate::root::{self, abs};
 use crate::{Money, Periodicity, Rate, TvmError};
 
 /// A periodicity-tagged series of cashflows at consecutive periods `0, 1, 2, …`.
@@ -153,68 +153,26 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
         if self.flows.is_empty() {
             return Err(TvmError::EmptyCashflows);
         }
-        let tolerance = self.npv_tolerance();
-        match self
-            .newton(guess, tolerance)
-            .or_else(|| self.bracket_and_bisect(tolerance))
+        // Scale the convergence tolerance by `Σ|CFₜ|` (an upper bound on `|NPV|`):
+        // an absolute tolerance would be unreachable for a series measured in
+        // millions (ADR-0021). Try Newton from `guess`, then the robust bracketing
+        // fallback (ADR-0020) — both shared with XIRR via the `root` module.
+        let tolerance = root::relative_tolerance(self.magnitude());
+        match root::newton(|r| self.npv_and_derivative(r), guess, tolerance)
+            .or_else(|| root::bracket_and_bisect(|r| self.npv_at(r), tolerance))
         {
             Some(rate) => Rate::new(rate),
             None => Err(TvmError::IrrDidNotConverge),
         }
     }
 
-    /// The NPV convergence tolerance, scaled by the cashflow magnitudes.
-    ///
-    /// An absolute tolerance (the old `1e-9`) is unreachable for a series measured
-    /// in millions, so a well-formed problem would fail with `IrrDidNotConverge`.
-    /// Scaling by `Σ|CFₜ|` — an upper bound on `|NPV|` — makes the check relative
-    /// to the problem's scale, with a floor of `1` so a tiny series keeps a sane
-    /// absolute tolerance (ADR-0021).
-    fn npv_tolerance(self) -> f64 {
-        const RELATIVE: f64 = 1e-9;
+    /// `Σ|CFₜ|` — an upper bound on `|NPV|`, used to scale the solver tolerance.
+    fn magnitude(self) -> f64 {
         let mut scale = 0.0;
         for cf in self.flows {
             scale += abs(cf.value());
         }
-        // Guard the degenerate/overflow case: a non-finite scale would make the
-        // tolerance infinite (accepting anything), so fall back to the floor.
-        if !scale.is_finite() || scale < 1.0 {
-            scale = 1.0;
-        }
-        RELATIVE * scale
-    }
-
-    /// Newton–Raphson from `guess`. `None` if it does not reach a root within its
-    /// iteration budget, the derivative goes flat, or an iterate leaves the valid
-    /// domain (a rate ≤ −100%, or a non-finite value — `is_finite` also rejects
-    /// `NaN`, so a diverging iterate fails cleanly rather than looping).
-    fn newton(self, guess: f64, tolerance: f64) -> Option<f64> {
-        const MAX_ITERATIONS: u32 = 128;
-        const MIN_DERIVATIVE: f64 = 1e-12;
-
-        let mut rate = guess;
-        for _ in 0..MAX_ITERATIONS {
-            if !rate.is_finite() || rate <= -1.0 {
-                return None;
-            }
-            let (npv, derivative) = self.npv_and_derivative(rate);
-            if within(npv, tolerance) {
-                return Some(rate);
-            }
-            if within(derivative, MIN_DERIVATIVE) {
-                return None;
-            }
-            rate -= npv / derivative;
-        }
-        None
-    }
-
-    /// Scan the valid rate domain (`r > −1`) for a sign change in the NPV and
-    /// bisect the first bracket found — the shared robust fallback
-    /// ([`root::bracket_and_bisect`](crate::root)). `None` if the NPV never changes
-    /// sign (no real IRR).
-    fn bracket_and_bisect(self, tolerance: f64) -> Option<f64> {
-        crate::root::bracket_and_bisect(|r| self.npv_at(r), tolerance)
+        scale
     }
 
     /// The NPV at a candidate per-period `rate` (no derivative), accumulated in

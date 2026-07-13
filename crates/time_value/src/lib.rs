@@ -94,6 +94,7 @@ mod period;
 #[cfg(any(feature = "std", feature = "libm"))]
 pub mod single_sum;
 
+pub use amortization::{Installment, Schedule};
 #[cfg(any(feature = "std", feature = "libm"))]
 pub use dated::{DatedCashflow, DatedCashflows};
 #[cfg(any(feature = "std", feature = "libm"))]
