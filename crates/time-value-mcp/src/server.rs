@@ -17,6 +17,7 @@ use time_value::{
     amortization, annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money,
     Monthly, Period, Rate, TvmError,
 };
+use time_value_daycount::{act365_year_fraction, iso_to_day};
 
 use crate::params::{
     AmortizeInput, AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput,
@@ -618,65 +619,19 @@ fn anchor(present: Option<f64>, future: Option<f64>) -> Result<Anchor, ErrorData
 // ---- Dated flows (XNPV/XIRR): ISO dates → ACT/365 year-offsets ----
 //
 // The core takes year-offsets, not a date type (ADR-0029); the server accepts ISO
-// `YYYY-MM-DD` dates and converts them with a self-contained ACT/365 day-count, so
-// no date dependency reaches the binary.
-
-/// Days since the epoch (proleptic Gregorian) via Howard Hinnant's
-/// days-from-civil algorithm. `month` is 1..=12, `day` valid for the month.
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let y = if month <= 2 { year - 1 } else { year };
-    let era = (if y >= 0 { y } else { y - 399 }) / 400;
-    let year_of_era = y - era * 400; // [0, 399]
-    let month_index = (month + 9) % 12; // Mar = 0 … Feb = 11
-    let day_of_year = (153 * month_index + 2) / 5 + day - 1; // [0, 365]
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    era * 146_097 + day_of_era - 719_468
-}
-
-fn is_leap_year(year: i64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
-}
-
-fn days_in_month(year: i64, month: i64) -> i64 {
-    match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        4 | 6 | 9 | 11 => 30,
-        2 if is_leap_year(year) => 29,
-        2 => 28,
-        _ => 0,
-    }
-}
-
-/// Parse an ISO `YYYY-MM-DD` date to a day number, mapping any malformed input to
-/// an MCP `invalid_params` error.
-fn parse_date(text: &str) -> Result<i64, ErrorData> {
-    let invalid =
-        || ErrorData::invalid_params(format!("invalid date `{text}` (expected YYYY-MM-DD)"), None);
-    let parts: Vec<&str> = text.split('-').collect();
-    if parts.len() != 3 {
-        return Err(invalid());
-    }
-    let year: i64 = parts[0].parse().map_err(|_| invalid())?;
-    let month: i64 = parts[1].parse().map_err(|_| invalid())?;
-    let day: i64 = parts[2].parse().map_err(|_| invalid())?;
-    if !(1..=12).contains(&month) || day < 1 || day > days_in_month(year, month) {
-        return Err(invalid());
-    }
-    Ok(days_from_civil(year, month, day))
-}
+// `YYYY-MM-DD` dates and converts them with the shared `time-value-daycount`
+// ACT/365 day-count (ADR-0030), so no date dependency reaches the binary.
 
 /// Convert dated inputs to core [`DatedCashflow`]s, rebasing offsets to the first
-/// flow (ACT/365).
+/// flow (ACT/365). A malformed date becomes an MCP `invalid_params` error.
 fn dated_flows(flows: &[DatedFlow]) -> Result<Vec<DatedCashflow>, ErrorData> {
     let mut out = Vec::with_capacity(flows.len());
     let mut reference: Option<i64> = None;
     for flow in flows {
-        let day = parse_date(&flow.date)?;
+        let day =
+            iso_to_day(&flow.date).map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
         let reference = *reference.get_or_insert(day);
-        // Day-count differences for real calendar dates are far below 2^53, so
-        // this conversion is exact despite the lint's worst-case warning.
-        #[allow(clippy::cast_precision_loss)]
-        let offset_years = (day - reference) as f64 / 365.0;
+        let offset_years = act365_year_fraction(reference, day);
         out.push(DatedCashflow::new(offset_years, money(flow.amount)?).map_err(tvm)?);
     }
     Ok(out)

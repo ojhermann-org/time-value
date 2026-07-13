@@ -14,9 +14,11 @@ errors*, while keeping the common path ergonomic.
 | [`time_value`](crates/time_value) | library (`no_std`) | The TVM calculations. Published on crates.io. |
 | [`time-value-cli`](crates/time-value-cli) | binary `time-value` | Command-line interface over the library. |
 | [`time-value-mcp`](crates/time-value-mcp) | binary `time-value-mcp` | MCP server exposing the calculations as tools. |
+| [`time-value-daycount`](crates/time-value-daycount) | library (internal) | ACT/365 day-count shared by the binaries. Unpublished. |
 
 Dependencies point one way, toward the library; the binaries depend on
-`time_value` by workspace path (see [ADR-0002](docs/adr/0002-workspace-layout.md)).
+`time_value` (and the internal `time-value-daycount`) by workspace path (see
+[ADR-0002](docs/adr/0002-workspace-layout.md)).
 Architecture decisions are recorded under [`docs/adr/`](docs/adr).
 
 ## Quick look

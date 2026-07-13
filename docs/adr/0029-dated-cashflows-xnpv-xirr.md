@@ -1,6 +1,7 @@
 # ADR-0029: Dated cashflows — XNPV / XIRR
 
-- **Status:** Accepted
+- **Status:** Accepted (amended by [0030](0030-shared-day-count-support-crate.md) — the
+  binaries' ACT/365 day-count now lives in a shared crate, not copied into each)
 - **Date:** 2026-07-13
 - **Deciders:** Project owner
 

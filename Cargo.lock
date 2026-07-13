@@ -964,8 +964,13 @@ dependencies = [
  "clap",
  "predicates",
  "serde_json",
+ "time-value-daycount",
  "time_value",
 ]
+
+[[package]]
+name = "time-value-daycount"
+version = "0.0.0"
 
 [[package]]
 name = "time-value-mcp"
@@ -978,6 +983,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "time-value-daycount",
  "time_value",
  "tokio",
 ]

@@ -22,6 +22,9 @@ path = "src/main.rs"
 [dependencies]
 # `std` gives the transcendental math the single-sum / annuity operations need.
 time_value = { workspace = true, features = ["std"] }
+# ACT/365 day-count for the dated-cashflow tools (XNPV/XIRR), shared with the CLI
+# binary (ADR-0030).
+time-value-daycount.workspace = true
 anyhow.workspace = true
 serde_json.workspace = true
 # The MCP transport and its async runtime (ADR-0011). The core library stays
