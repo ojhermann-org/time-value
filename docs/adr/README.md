@@ -46,3 +46,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0025](0025-solve-for-periods-and-rate.md) | Solve for periods (NPER) and rate (RATE) | Accepted |
 | [0026](0026-modified-internal-rate-of-return.md) | Modified internal rate of return (MIRR) | Accepted |
 | [0027](0027-amortization-schedule.md) | Amortization schedule as a lazy iterator | Accepted |
+| [0028](0028-binary-surface-conventions.md) | Binary surface conventions (CLI grammar & MCP tools) | Proposed |
