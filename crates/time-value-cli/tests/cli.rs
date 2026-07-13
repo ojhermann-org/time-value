@@ -317,6 +317,81 @@ fn annuity_due_present_value_exceeds_ordinary() {
 }
 
 #[test]
+fn rate_effective_annual_of_a_monthly_rate() {
+    // (1.01)^12 - 1 = 0.126825…
+    time_value()
+        .args(["rate", "ear", "--rate", "0.01", "--periodicity", "monthly"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.1268"));
+}
+
+#[test]
+fn rate_convert_between_periodicities() {
+    // 1%/month -> quarterly at the same EAR = 0.030301…
+    time_value()
+        .args([
+            "rate",
+            "convert",
+            "--rate",
+            "0.01",
+            "--from",
+            "monthly",
+            "--to",
+            "quarterly",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.0303"));
+}
+
+#[test]
+fn rate_nominal_and_from_nominal_are_inverses() {
+    // nominal(0.01, monthly) = 0.12; from-nominal(0.12, monthly) = 0.01.
+    time_value()
+        .args([
+            "rate",
+            "nominal",
+            "--rate",
+            "0.01",
+            "--periodicity",
+            "monthly",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.12"));
+
+    time_value()
+        .args([
+            "rate",
+            "from-nominal",
+            "--nominal",
+            "0.12",
+            "--periodicity",
+            "monthly",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.01"));
+}
+
+#[test]
+fn rate_rejects_an_unknown_periodicity() {
+    time_value()
+        .args([
+            "rate",
+            "ear",
+            "--rate",
+            "0.01",
+            "--periodicity",
+            "fortnightly",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown periodicity"));
+}
+
+#[test]
 fn json_output_is_keyed_by_operation() {
     time_value()
         .args([

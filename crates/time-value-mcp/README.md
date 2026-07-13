@@ -20,6 +20,7 @@ the core library stays synchronous.
 | `annuity_periods`, `annuity_rate` | solve an annuity for periods / rate, from a present or future value |
 | `annuity_perpetuity`, `annuity_growing_perpetuity` | present value of a (growing) perpetuity |
 | `annuity_due_present_value`, `annuity_due_future_value`, `annuity_due_payment` | annuity-due (start-of-period) |
+| `rate_effective_annual`, `rate_convert`, `rate_from_nominal`, `rate_nominal` | rate conversions (each takes a periodicity) |
 
 Rates are per period (annual for `xnpv`/`xirr`); cashflows are signed (outflow
 negative). `xnpv`/`xirr` take `{date, amount}` flows with ISO `YYYY-MM-DD` dates,

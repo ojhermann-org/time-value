@@ -21,8 +21,53 @@ use time_value::{
 use crate::params::{
     AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput, DatedFlow,
     DatedIrrInput, DatedSeriesInput, FutureValueInput, GrowingPerpetuityInput, IrrInput, MirrInput,
-    PerpetuityInput, PresentValueInput, SeriesInput, SingleSumPeriodsInput, SingleSumRateInput,
+    PerpetuityInput, PresentValueInput, RateConvertInput, RateEffectiveAnnualInput,
+    RateFromNominalInput, SeriesInput, SingleSumPeriodsInput, SingleSumRateInput,
 };
+
+/// Run `$body` with the type alias `$ty` bound to the periodicity marker named by
+/// `$name` at runtime; an unknown name returns an MCP `invalid_params` error from
+/// the calling tool. Used by the `rate_*` conversion tools, where periodicity is
+/// intrinsic (ADR-0028/0029).
+macro_rules! dispatch_periodicity {
+    ($name:expr, $ty:ident => $body:expr) => {{
+        match $name {
+            "daily" => {
+                type $ty = time_value::Daily;
+                $body
+            }
+            "weekly" => {
+                type $ty = time_value::Weekly;
+                $body
+            }
+            "monthly" => {
+                type $ty = time_value::Monthly;
+                $body
+            }
+            "quarterly" => {
+                type $ty = time_value::Quarterly;
+                $body
+            }
+            "semi-annual" => {
+                type $ty = time_value::SemiAnnual;
+                $body
+            }
+            "annual" => {
+                type $ty = time_value::Annual;
+                $body
+            }
+            other => {
+                return Err(ErrorData::invalid_params(
+                    format!(
+                        "unknown periodicity `{other}` \
+                         (expected daily, weekly, monthly, quarterly, semi-annual, or annual)"
+                    ),
+                    None,
+                ))
+            }
+        }
+    }};
+}
 
 /// Told to clients on initialise.
 const INSTRUCTIONS: &str = "\
@@ -36,8 +81,11 @@ dates, at an annual rate). Single sum: `single_sum_present_value`, \
 `annuity_rate` (each from a present or future value), `annuity_perpetuity`, \
 `annuity_growing_perpetuity`, and the annuity-due forms \
 `annuity_due_present_value`, `annuity_due_future_value`, `annuity_due_payment`. \
-Rates are per period (annual for `xnpv`/`xirr`); cashflows are signed (outflow \
-negative). Source: https://github.com/ojhermann-org/time-value";
+Rate conversions: `rate_effective_annual` (EAR), `rate_convert` (between \
+periodicities), `rate_from_nominal` and `rate_nominal` (nominal/APR) — each takes \
+a periodicity (daily, weekly, monthly, quarterly, semi-annual, annual). Rates are \
+per period (annual for `xnpv`/`xirr`); cashflows are signed (outflow negative). \
+Source: https://github.com/ojhermann-org/time-value";
 
 /// The MCP server. Stateless: the operations are pure functions of their inputs.
 #[derive(Clone)]
@@ -383,6 +431,74 @@ impl TimeValueServer {
         )
         .map_err(tvm)?;
         Ok(result("annuity_due_payment", payment.value()))
+    }
+
+    #[tool(
+        name = "rate_effective_annual",
+        description = "The effective annual rate (EAR) equivalent to a per-period rate at a given periodicity."
+    )]
+    fn rate_effective_annual(
+        &self,
+        Parameters(input): Parameters<RateEffectiveAnnualInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = dispatch_periodicity!(input.periodicity.as_str(), P => {
+            Rate::<P>::new(input.rate)
+                .map_err(tvm)?
+                .effective_annual()
+                .map_err(tvm)?
+                .value()
+        });
+        Ok(result("rate_effective_annual", value))
+    }
+
+    #[tool(
+        name = "rate_convert",
+        description = "Convert a per-period rate from one periodicity to another, preserving the effective annual rate."
+    )]
+    fn rate_convert(
+        &self,
+        Parameters(input): Parameters<RateConvertInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = dispatch_periodicity!(input.from.as_str(), P => {
+            let source = Rate::<P>::new(input.rate).map_err(tvm)?;
+            dispatch_periodicity!(input.to.as_str(), Q => {
+                source.convert::<Q>().map_err(tvm)?.value()
+            })
+        });
+        Ok(result("rate_convert", value))
+    }
+
+    #[tool(
+        name = "rate_from_nominal",
+        description = "The per-period rate implied by a nominal annual rate (APR) compounded at a given periodicity."
+    )]
+    fn rate_from_nominal(
+        &self,
+        Parameters(input): Parameters<RateFromNominalInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = dispatch_periodicity!(input.periodicity.as_str(), P => {
+            Rate::<P>::from_nominal_annual(input.nominal)
+                .map_err(tvm)?
+                .value()
+        });
+        Ok(result("rate_from_nominal", value))
+    }
+
+    #[tool(
+        name = "rate_nominal",
+        description = "The nominal annual rate (APR) quoted from a per-period rate at a given periodicity."
+    )]
+    fn rate_nominal(
+        &self,
+        Parameters(input): Parameters<RateEffectiveAnnualInput>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let value = dispatch_periodicity!(input.periodicity.as_str(), P => {
+            Rate::<P>::new(input.rate)
+                .map_err(tvm)?
+                .nominal_annual()
+                .map_err(tvm)?
+        });
+        Ok(result("rate_nominal", value))
     }
 }
 

@@ -167,6 +167,36 @@ pub(crate) struct GrowingPerpetuityInput {
     pub payment: f64,
 }
 
+/// Input for the `rate_effective_annual` and `rate_nominal` tools.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct RateEffectiveAnnualInput {
+    /// The per-period rate.
+    pub rate: f64,
+    /// The periodicity: `daily`, `weekly`, `monthly`, `quarterly`,
+    /// `semi-annual`, or `annual`.
+    pub periodicity: String,
+}
+
+/// Input for the `rate_convert` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct RateConvertInput {
+    /// The per-period rate expressed under `from`.
+    pub rate: f64,
+    /// The periodicity the rate is expressed in.
+    pub from: String,
+    /// The periodicity to express the rate in.
+    pub to: String,
+}
+
+/// Input for the `rate_from_nominal` tool.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct RateFromNominalInput {
+    /// The nominal annual rate (APR).
+    pub nominal: f64,
+    /// The compounding periodicity.
+    pub periodicity: String,
+}
+
 /// Input for the `annuity_present_value` and `annuity_future_value` tools.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct AnnuityValueInput {

@@ -47,6 +47,12 @@ time-value annuity perpetuity         --rate 0.05 --payment 100          # 2000
 time-value annuity growing-perpetuity --rate 0.05 --growth 0.02 --payment 100
 time-value annuity due pv  --rate 0.01 --periods 12 --payment 100
 
+# Rate conversions (the one family that takes a periodicity)
+time-value rate ear         --rate 0.01 --periodicity monthly            # 0.126825…
+time-value rate convert     --rate 0.01 --from monthly --to quarterly    # 0.030301…
+time-value rate nominal     --rate 0.01 --periodicity monthly            # 0.12 (APR)
+time-value rate from-nominal --nominal 0.12 --periodicity monthly        # 0.01
+
 # JSON output for scripting
 time-value --json series npv --rate 0.01 -100 60 60    # {"npv":18.2237…}
 ```

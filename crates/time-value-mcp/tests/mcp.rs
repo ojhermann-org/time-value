@@ -162,6 +162,40 @@ fn annuity_periods_requires_exactly_one_anchor() {
 }
 
 #[test]
+fn rate_conversion_tools() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"rate_effective_annual","arguments":{"rate":0.01,"periodicity":"monthly"}}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"rate_convert","arguments":{"rate":0.01,"from":"monthly","to":"quarterly"}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        // EAR of 1%/month = 0.126825…; monthly→quarterly = 0.030301…
+        .stdout(predicate::str::contains("0.1268"))
+        .stdout(predicate::str::contains("0.0303"));
+}
+
+#[test]
+fn rate_rejects_an_unknown_periodicity() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"rate_effective_annual","arguments":{"rate":0.01,"periodicity":"fortnightly"}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unknown periodicity"));
+}
+
+#[test]
 fn an_overflowing_result_is_an_error_not_null() {
     // Previously this returned `{"future_value":null}` with isError:false — a
     // silent non-answer. Now it is a proper error (ADR-0021).

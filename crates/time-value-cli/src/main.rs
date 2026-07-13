@@ -4,10 +4,12 @@
 //! `docs/adr/0010-cli-surface.md`, extended by `docs/adr/0028-binary-surface-conventions.md`).
 //! Commands are grouped by relationship family: `series` (net present/future
 //! value, IRR, MIRR, and the dated XNPV/XIRR), `single-sum` (present/future value
-//! and the solve-for `nper`/`rate` inverses), and `annuity` (ordinary,
-//! annuity-`due`, and perpetuity forms, plus the `nper`/`rate` solves). `--rate`
-//! is a per-period rate (annual for the dated `series xnpv`/`xirr`); cashflows are
-//! positional. Results print as a plain number, or as JSON with `--json`.
+//! and the solve-for `nper`/`rate` inverses), `annuity` (ordinary, annuity-`due`,
+//! and perpetuity forms, plus the `nper`/`rate` solves), and `rate` (conversions
+//! between periodicities and nominal/effective quotes — the only family that
+//! takes a periodicity). `--rate` is a per-period rate (annual for the dated
+//! `series xnpv`/`xirr`); cashflows are positional. Results print as a plain
+//! number, or as JSON with `--json`.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -45,6 +47,11 @@ enum Command {
     Annuity {
         #[command(subcommand)]
         command: AnnuityCommand,
+    },
+    /// Rate conversions: effective-annual, between periodicities, and nominal.
+    Rate {
+        #[command(subcommand)]
+        command: RateCommand,
     },
 }
 
@@ -285,10 +292,93 @@ enum AnnuityDueCommand {
     },
 }
 
+#[derive(Subcommand)]
+enum RateCommand {
+    /// Effective annual rate (EAR) equivalent to a per-period rate.
+    Ear {
+        /// The per-period rate.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The periodicity of the rate (daily, weekly, monthly, quarterly,
+        /// semi-annual, annual).
+        #[arg(long)]
+        periodicity: String,
+    },
+    /// Convert a per-period rate from one periodicity to another (same EAR).
+    Convert {
+        /// The per-period rate under `--from`.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The periodicity the rate is expressed in.
+        #[arg(long)]
+        from: String,
+        /// The periodicity to express the rate in.
+        #[arg(long)]
+        to: String,
+    },
+    /// Per-period rate from a nominal annual rate (APR) at a periodicity.
+    FromNominal {
+        /// The nominal annual rate (APR).
+        #[arg(long, allow_hyphen_values = true)]
+        nominal: f64,
+        /// The compounding periodicity.
+        #[arg(long)]
+        periodicity: String,
+    },
+    /// Nominal annual rate (APR) quoted from a per-period rate.
+    Nominal {
+        /// The per-period rate.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The compounding periodicity.
+        #[arg(long)]
+        periodicity: String,
+    },
+}
+
 // The periodicity tag does not affect any result for the period-indexed
 // operations (ADR-0010); the CLI fixes it to one marker to satisfy the type
 // parameter. The dated `series xnpv`/`xirr` are intrinsically annual (ADR-0029).
+// The `rate` conversion group is the exception: periodicity is intrinsic there,
+// so it dispatches the runtime name to a marker type (`dispatch_periodicity!`).
 type Per = Monthly;
+
+/// Run `$body` with the type alias `$ty` bound to the periodicity marker named by
+/// `$name` at runtime; an unknown name is a usage error.
+macro_rules! dispatch_periodicity {
+    ($name:expr, $ty:ident => $body:expr) => {{
+        match $name {
+            "daily" => {
+                type $ty = time_value::Daily;
+                $body
+            }
+            "weekly" => {
+                type $ty = time_value::Weekly;
+                $body
+            }
+            "monthly" => {
+                type $ty = time_value::Monthly;
+                $body
+            }
+            "quarterly" => {
+                type $ty = time_value::Quarterly;
+                $body
+            }
+            "semi-annual" => {
+                type $ty = time_value::SemiAnnual;
+                $body
+            }
+            "annual" => {
+                type $ty = time_value::Annual;
+                $body
+            }
+            other => bail!(
+                "unknown periodicity `{other}` \
+                 (expected daily, weekly, monthly, quarterly, semi-annual, or annual)"
+            ),
+        }
+    }};
+}
 
 fn rate(value: f64) -> Result<Rate<Per>> {
     Rate::new(value).context("invalid rate (must be finite and greater than -100%)")
@@ -613,11 +703,65 @@ fn run_annuity_due(command: AnnuityDueCommand) -> Result<(&'static str, f64)> {
     })
 }
 
+/// Dispatch the `rate` subcommands. Each names a periodicity at runtime, resolved
+/// to a marker type via `dispatch_periodicity!`.
+fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
+    Ok(match command {
+        RateCommand::Ear {
+            rate: r,
+            periodicity,
+        } => {
+            let ear = dispatch_periodicity!(periodicity.as_str(), P => {
+                Rate::<P>::new(r)?
+                    .effective_annual()
+                    .context("effective annual rate is undefined for this input")?
+                    .value()
+            });
+            ("ear", ear)
+        }
+        RateCommand::Convert { rate: r, from, to } => {
+            let converted = dispatch_periodicity!(from.as_str(), P => {
+                let source = Rate::<P>::new(r)?;
+                dispatch_periodicity!(to.as_str(), Q => {
+                    source
+                        .convert::<Q>()
+                        .context("rate conversion is undefined for this input")?
+                        .value()
+                })
+            });
+            ("convert", converted)
+        }
+        RateCommand::FromNominal {
+            nominal,
+            periodicity,
+        } => {
+            let periodic = dispatch_periodicity!(periodicity.as_str(), P => {
+                Rate::<P>::from_nominal_annual(nominal)
+                    .context("invalid nominal rate")?
+                    .value()
+            });
+            ("from_nominal", periodic)
+        }
+        RateCommand::Nominal {
+            rate: r,
+            periodicity,
+        } => {
+            let nominal = dispatch_periodicity!(periodicity.as_str(), P => {
+                Rate::<P>::new(r)?
+                    .nominal_annual()
+                    .context("nominal annual rate is undefined for this input")?
+            });
+            ("nominal", nominal)
+        }
+    })
+}
+
 fn run(cli: Cli) -> Result<()> {
     let (label, value) = match cli.command {
         Command::Series { command } => run_series(command)?,
         Command::SingleSum { command } => run_single_sum(command)?,
         Command::Annuity { command } => run_annuity(command)?,
+        Command::Rate { command } => run_rate(command)?,
     };
 
     if cli.json {
