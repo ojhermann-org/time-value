@@ -37,8 +37,9 @@
 //! and [perpetuity](annuity::perpetuity) forms, plus the `periods` / `rate`
 //! solves), the modified internal rate of return
 //! ([`Cashflows::modified_internal_rate_of_return`]), the term-based
-//! [`amortization`] constructor, and effective rate conversions between
-//! periodicities ([`Rate::convert`] / [`Rate::effective_annual`]). Nominal-rate
+//! [`amortization`] constructor, effective rate conversions between
+//! periodicities ([`Rate::convert`] / [`Rate::effective_annual`]), and
+//! [`DatedCashflows`] (XNPV/XIRR over irregularly dated flows). Nominal-rate
 //! conversion ([`Rate::from_nominal_annual`] / [`Rate::nominal_annual`]) is plain
 //! arithmetic and needs no feature.
 //!
@@ -85,12 +86,16 @@ pub use rate::Rate;
 #[cfg(any(feature = "std", feature = "libm"))]
 pub mod annuity;
 #[cfg(any(feature = "std", feature = "libm"))]
+mod dated;
+#[cfg(any(feature = "std", feature = "libm"))]
 mod math;
 #[cfg(any(feature = "std", feature = "libm"))]
 mod period;
 #[cfg(any(feature = "std", feature = "libm"))]
 pub mod single_sum;
 
+#[cfg(any(feature = "std", feature = "libm"))]
+pub use dated::{DatedCashflow, DatedCashflows};
 #[cfg(any(feature = "std", feature = "libm"))]
 pub use period::Period;
 
@@ -115,6 +120,10 @@ pub enum TvmError {
     NonFiniteResult,
     /// A period count was negative or not finite.
     NegativePeriods,
+    /// A dated cashflow was given a non-finite year-offset (`NaN` or an infinity).
+    /// The offset may be negative or zero, but must be finite
+    /// ([`DatedCashflow`](crate::DatedCashflow); ADR-0029).
+    NonFiniteOffset,
     /// An operation that requires at least one cashflow was given an empty
     /// series (e.g. [`Cashflows::internal_rate_of_return`]).
     EmptyCashflows,
@@ -147,6 +156,7 @@ impl fmt::Display for TvmError {
                 f.write_str("operation did not produce a finite amount (overflow or undefined)")
             }
             Self::NegativePeriods => f.write_str("period count must be finite and non-negative"),
+            Self::NonFiniteOffset => f.write_str("dated cashflow year-offset must be finite"),
             Self::EmptyCashflows => f.write_str("cashflow series is empty"),
             Self::IrrDidNotConverge => f.write_str("internal rate of return did not converge"),
             Self::SolveDidNotConverge => f.write_str("solve for rate did not converge"),

@@ -12,7 +12,7 @@ fn time_value() -> Command {
 fn npv_of_a_simple_series() {
     // -100 now, +60, +60 at 1% per period -> ~18.22.
     time_value()
-        .args(["npv", "--rate", "0.01", "-100", "60", "60"])
+        .args(["series", "npv", "--rate", "0.01", "-100", "60", "60"])
         .assert()
         .success()
         .stdout(predicate::str::starts_with("18.22"));
@@ -21,7 +21,7 @@ fn npv_of_a_simple_series() {
 #[test]
 fn nfv_of_a_simple_series() {
     time_value()
-        .args(["nfv", "--rate", "0.01", "-100", "60", "60"])
+        .args(["series", "nfv", "--rate", "0.01", "-100", "60", "60"])
         .assert()
         .success()
         .stdout(predicate::str::starts_with("18.5"));
@@ -30,10 +30,77 @@ fn nfv_of_a_simple_series() {
 #[test]
 fn irr_of_a_simple_series() {
     time_value()
-        .args(["irr", "-100", "60", "60"])
+        .args(["series", "irr", "-100", "60", "60"])
         .assert()
         .success()
         .stdout(predicate::str::starts_with("0.130"));
+}
+
+#[test]
+fn mirr_of_a_simple_series() {
+    // Outflows -1000, -500; inflows 800, 900 at finance 10% / reinvest 12%.
+    time_value()
+        .args([
+            "series",
+            "mirr",
+            "--finance",
+            "0.10",
+            "--reinvest",
+            "0.12",
+            "-1000",
+            "-500",
+            "800",
+            "900",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.072"));
+}
+
+#[test]
+fn xnpv_of_dated_flows() {
+    // -100 now, +110 exactly one year later at 10%/yr -> ~0.
+    time_value()
+        .args([
+            "series",
+            "xnpv",
+            "--rate",
+            "0.10",
+            "2020-01-01:-100",
+            "2021-01-01:110",
+        ])
+        .assert()
+        .success()
+        // 2020 is a leap year (366 days), so the offset is 366/365 -> XNPV slightly
+        // above zero, but small.
+        .stdout(predicate::str::starts_with("0.0").or(predicate::str::starts_with("-0.0")));
+}
+
+#[test]
+fn xirr_of_the_excel_reference() {
+    // Microsoft's XIRR example -> ~0.3734.
+    time_value()
+        .args([
+            "series",
+            "xirr",
+            "2008-01-01:-10000",
+            "2008-03-01:2750",
+            "2008-10-30:4250",
+            "2009-02-15:3250",
+            "2009-04-01:2750",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.373"));
+}
+
+#[test]
+fn an_invalid_date_fails() {
+    time_value()
+        .args(["series", "xirr", "2020-02-30:-100", "2021-01-01:110"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid date"));
 }
 
 #[test]
@@ -109,7 +176,9 @@ fn annuity_payment_amortises_a_present_value() {
 #[test]
 fn json_output_is_keyed_by_operation() {
     time_value()
-        .args(["--json", "npv", "--rate", "0.01", "-100", "60", "60"])
+        .args([
+            "--json", "series", "npv", "--rate", "0.01", "-100", "60", "60",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("\"npv\""));
@@ -118,7 +187,7 @@ fn json_output_is_keyed_by_operation() {
 #[test]
 fn an_invalid_rate_fails() {
     time_value()
-        .args(["npv", "--rate", "-1.5", "-100", "60"])
+        .args(["series", "npv", "--rate", "-1.5", "-100", "60"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("rate"));
@@ -157,7 +226,7 @@ fn an_overflowing_result_fails_in_json_mode_too() {
 fn a_nonconvergent_irr_fails() {
     // All inflows: NPV is positive for every rate, so there is no IRR.
     time_value()
-        .args(["irr", "100", "60", "60"])
+        .args(["series", "irr", "100", "60", "60"])
         .assert()
         .failure()
         .stderr(predicate::str::contains("internal rate of return"));
