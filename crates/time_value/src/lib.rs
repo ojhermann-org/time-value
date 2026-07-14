@@ -37,17 +37,19 @@
 //! allocation-free [`amortization`] schedule iterator (from an explicit payment;
 //! its term-based constructor needs a feature).
 //!
-//! Operations that require transcendental functions (`powf`, `ln`) live behind
-//! the optional `std` / `libm` features (see
+//! Operations that require transcendental functions (`powf`, `ln`, `exp`) live
+//! behind the optional `std` / `libm` features (see
 //! `docs/adr/0009-no_std-and-optional-libm.md`): the [`single_sum`] module
 //! (present/future value and the solve-for `periods` / `rate` inverses, with the
-//! [`Period`] type), the [`annuity`] module (ordinary, [annuity-due](annuity::due),
+//! [`Period<P>`] type), the [`annuity`] module (ordinary, [annuity-due](annuity::due),
 //! [perpetuity](annuity::perpetuity), and [growing-perpetuity](annuity::growing_perpetuity)
 //! forms, plus the `periods` / `rate` solves), the modified internal rate of return
 //! ([`Cashflows::modified_internal_rate_of_return`]), the term-based
 //! [`amortization`] constructor, effective rate conversions between
-//! periodicities ([`Rate::convert`] / [`Rate::effective_annual`]), and
-//! [`DatedCashflows`] (XNPV/XIRR over irregularly dated flows). Nominal-rate
+//! periodicities ([`Rate::convert`] / [`Rate::effective_annual`]),
+//! [`DatedCashflows`] (XNPV/XIRR over irregularly dated flows), and the
+//! [`continuous`] module (continuous compounding at a periodicity-free
+//! [`ContinuousRate`], with the `Rate<Annual>` bridge). Nominal-rate
 //! conversion ([`Rate::from_nominal_annual`] / [`Rate::nominal_annual`]) is plain
 //! arithmetic and needs no feature.
 //!
@@ -98,6 +100,8 @@ pub use rate::Rate;
 #[cfg(any(feature = "std", feature = "libm"))]
 pub mod annuity;
 #[cfg(any(feature = "std", feature = "libm"))]
+pub mod continuous;
+#[cfg(any(feature = "std", feature = "libm"))]
 mod dated;
 #[cfg(any(feature = "std", feature = "libm"))]
 mod math;
@@ -107,6 +111,8 @@ mod period;
 pub mod single_sum;
 
 pub use amortization::{Installment, Schedule};
+#[cfg(any(feature = "std", feature = "libm"))]
+pub use continuous::ContinuousRate;
 #[cfg(any(feature = "std", feature = "libm"))]
 pub use dated::{DatedCashflow, DatedCashflows};
 #[cfg(any(feature = "std", feature = "libm"))]
@@ -121,6 +127,12 @@ pub enum TvmError {
     /// A rate was not finite, or was less than or equal to `-1.0` (i.e. ≤ −100%),
     /// which is economically meaningless for discounting and compounding.
     RateOutOfRange,
+    /// A [`ContinuousRate`] (a force of interest) supplied to a constructor was not
+    /// finite. Unlike [`RateOutOfRange`](Self::RateOutOfRange), a continuous rate has
+    /// no `> -1` floor — any *finite* force of interest is valid (its effective
+    /// growth factor `e^δ` is always positive) — so only non-finiteness is rejected
+    /// (`docs/adr/0036-continuous-compounding-force-of-interest.md`).
+    NonFiniteRate,
     /// A monetary amount supplied to a constructor was not finite (`NaN` or an
     /// infinity). For a non-finite value *produced by an operation*, see
     /// [`Overflow`](Self::Overflow) and [`Undefined`](Self::Undefined).
@@ -153,9 +165,10 @@ pub enum TvmError {
     Undefined,
     /// A period count was negative or not finite.
     NegativePeriods,
-    /// A dated cashflow was given a non-finite year-offset (`NaN` or an infinity).
-    /// The offset may be negative or zero, but must be finite
-    /// ([`DatedCashflow`]; ADR-0029).
+    /// A duration in years, given as a plain `f64`, was not finite (`NaN` or an
+    /// infinity). Used for a [`DatedCashflow`]'s year-offset (ADR-0029) and for the
+    /// [`continuous`] operations' `years` duration (ADR-0036). The value may be
+    /// negative or zero, but must be finite.
     NonFiniteOffset,
     /// An operation that requires at least one cashflow was given an empty
     /// series (e.g. [`Cashflows::internal_rate_of_return`]).
@@ -183,6 +196,9 @@ impl fmt::Display for TvmError {
         match *self {
             Self::RateOutOfRange => {
                 f.write_str("rate must be finite and greater than -1.0 (-100%)")
+            }
+            Self::NonFiniteRate => {
+                f.write_str("continuous rate (force of interest) must be finite")
             }
             Self::NonFiniteAmount => f.write_str("monetary amount must be finite"),
             Self::CurrencyMismatch => {
