@@ -582,7 +582,7 @@ fn annual_rate(value: f64) -> Result<Rate<Annual>, ErrorData> {
     Rate::new(value).map_err(tvm)
 }
 
-fn period(value: f64) -> Result<Period, ErrorData> {
+fn period(value: f64) -> Result<Period<Monthly>, ErrorData> {
     Period::new(value).map_err(tvm)
 }
 

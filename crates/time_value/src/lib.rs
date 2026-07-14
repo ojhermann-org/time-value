@@ -20,6 +20,11 @@
 //!   [`TvmError::CurrencyMismatch`].
 //! - [`Rate<P>`] is a per-period interest rate tagged with a [`Periodicity`]
 //!   marker (`P` — e.g. [`Monthly`], [`Annual`]). The tag is zero-sized.
+//! - [`Period<P>`] is a periodicity-tagged count of periods — "how many periods
+//!   *of periodicity `P`*". Periodicity is the crate's sole compile-time tag,
+//!   applied uniformly to `Rate<P>`, `Period<P>`, and `Cashflows<P>`, so pairing a
+//!   duration with a rate of a different periodicity is a compile error
+//!   everywhere, not just for series (`docs/adr/0035-periodicity-tagged-time.md`).
 //! - [`Cashflows<P>`] is a periodicity-tagged series of cashflows at consecutive
 //!   periods. Discounting a [`Cashflows<P>`] requires a [`Rate<P>`] of the *same*
 //!   periodicity, so a mismatch is a compile error.
@@ -64,6 +69,7 @@
 //!
 //! [`Cashflows<P>`]: Cashflows
 //! [`Rate<P>`]: Rate
+//! [`Period<P>`]: Period
 //! [`net_present_value`]: Cashflows::net_present_value
 //! [`net_future_value`]: Cashflows::net_future_value
 //! [`internal_rate_of_return`]: Cashflows::internal_rate_of_return

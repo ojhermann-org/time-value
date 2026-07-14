@@ -74,7 +74,7 @@ fn future_value_factor(rate: f64, periods: f64) -> f64 {
 /// value on extreme rate/period magnitudes (ADR-0021).
 pub fn present_value<P: Periodicity>(
     rate: Rate<P>,
-    periods: Period,
+    periods: Period<P>,
     payment: Money,
 ) -> Result<Money, TvmError> {
     Money::from_operation(
@@ -108,7 +108,7 @@ pub fn present_value<P: Periodicity>(
 /// value on extreme rate/period magnitudes (ADR-0021).
 pub fn future_value<P: Periodicity>(
     rate: Rate<P>,
-    periods: Period,
+    periods: Period<P>,
     payment: Money,
 ) -> Result<Money, TvmError> {
     Money::from_operation(
@@ -145,7 +145,7 @@ pub fn future_value<P: Periodicity>(
 /// the division overflows on extreme magnitudes (ADR-0021, ADR-0031).
 pub fn payment<P: Periodicity>(
     rate: Rate<P>,
-    periods: Period,
+    periods: Period<P>,
     present: Money,
 ) -> Result<Money, TvmError> {
     if periods.value() == 0.0 {
@@ -260,7 +260,7 @@ pub fn periods<P: Periodicity>(
     rate: Rate<P>,
     payment: Money,
     present: Money,
-) -> Result<Period, TvmError> {
+) -> Result<Period<P>, TvmError> {
     let r = rate.value();
     let n = if near_zero(r) {
         if payment.value() == 0.0 {
@@ -308,7 +308,7 @@ pub fn periods_from_future<P: Periodicity>(
     rate: Rate<P>,
     payment: Money,
     future: Money,
-) -> Result<Period, TvmError> {
+) -> Result<Period<P>, TvmError> {
     let r = rate.value();
     let n = if near_zero(r) {
         if payment.value() == 0.0 {
@@ -356,7 +356,7 @@ pub fn periods_from_future<P: Periodicity>(
 /// [`TvmError::Overflow`] if the located root is outside the valid rate
 /// domain or non-finite.
 pub fn rate<P: Periodicity>(
-    periods: Period,
+    periods: Period<P>,
     payment: Money,
     present: Money,
 ) -> Result<Rate<P>, TvmError> {
@@ -395,7 +395,7 @@ pub fn rate<P: Periodicity>(
 ///
 /// As [`rate`].
 pub fn rate_from_future<P: Periodicity>(
-    periods: Period,
+    periods: Period<P>,
     payment: Money,
     future: Money,
 ) -> Result<Rate<P>, TvmError> {
@@ -465,7 +465,7 @@ pub mod due {
     /// non-finite value on extreme rate/period magnitudes (ADR-0021).
     pub fn present_value<P: Periodicity>(
         rate: Rate<P>,
-        periods: Period,
+        periods: Period<P>,
         payment: Money,
     ) -> Result<Money, TvmError> {
         let factor = present_value_factor(rate.value(), periods.value()) * (1.0 + rate.value());
@@ -497,7 +497,7 @@ pub mod due {
     /// non-finite value on extreme rate/period magnitudes (ADR-0021).
     pub fn future_value<P: Periodicity>(
         rate: Rate<P>,
-        periods: Period,
+        periods: Period<P>,
         payment: Money,
     ) -> Result<Money, TvmError> {
         let factor = future_value_factor(rate.value(), periods.value()) * (1.0 + rate.value());
@@ -535,7 +535,7 @@ pub mod due {
     /// magnitudes (ADR-0021, ADR-0031).
     pub fn payment<P: Periodicity>(
         rate: Rate<P>,
-        periods: Period,
+        periods: Period<P>,
         present: Money,
     ) -> Result<Money, TvmError> {
         if periods.value() == 0.0 {
