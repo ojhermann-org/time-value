@@ -53,6 +53,10 @@
 //! conversion ([`Rate::from_nominal_annual`] / [`Rate::nominal_annual`]) is plain
 //! arithmetic and needs no feature.
 //!
+//! The optional `alloc` feature (off by default, implied by `std`) adds the owned
+//! [`OwnedCashflows`] series — built from a `Vec` or an iterator — complementing
+//! the borrowed, allocation-free [`Cashflows`] (`docs/adr/0043-owned-cashflows.md`).
+//!
 //! The optional `serde` feature (off by default, `no_std`-compatible) derives
 //! `Serialize`/`Deserialize` for the public value types — bare numbers for the
 //! newtypes, `{ amount, currency }` for [`Money`], the ISO 4217 code for
@@ -87,6 +91,12 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
 
+// The owned `OwnedCashflows` series needs a `Vec`; pull in the `alloc` crate
+// (without requiring `std`) when the `alloc` feature — implied by `std` — is on
+// (ADR-0043).
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
 pub mod amortization;
 mod cashflows;
 mod currency;
@@ -96,6 +106,8 @@ mod rate;
 mod root;
 
 pub use cashflows::Cashflows;
+#[cfg(feature = "alloc")]
+pub use cashflows::OwnedCashflows;
 pub use currency::Currency;
 pub use money::{FxRate, Money};
 pub use periodicity::{Annual, Daily, Monthly, Periodicity, Quarterly, SemiAnnual, Weekly};

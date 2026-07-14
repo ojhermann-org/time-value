@@ -336,6 +336,165 @@ impl<P: Periodicity> Cashflows<'_, P> {
     }
 }
 
+/// An **owned** cashflow series — the allocating complement to the borrowed
+/// [`Cashflows`], behind the `alloc` feature (implied by `std`; ADR-0043).
+///
+/// [`Cashflows`] borrows a `&[Money]` and stays `no_std`/allocation-free
+/// (ADR-0013). `OwnedCashflows` owns a `Vec<Money>`, so it can be **built from an
+/// iterator** or handed around without keeping the source slice alive — at the
+/// cost of an allocation. It carries the same periodicity tag `P`.
+///
+/// The operations are **not reimplemented** here: an owned series lends a borrowed
+/// [`Cashflows`] view via [`as_cashflows`](Self::as_cashflows), and the methods
+/// below forward to it, so there is a single source of truth for the math. (A new
+/// operation added to [`Cashflows`] should gain a one-line forward here too.)
+///
+/// # Examples
+///
+/// ```
+/// use time_value::{Money, Monthly, OwnedCashflows, Rate};
+///
+/// // Build straight from an iterator — no backing slice to keep alive.
+/// let series: OwnedCashflows<Monthly> =
+///     [-100.0, 60.0, 60.0].into_iter().map(Money::agnostic).collect::<Result<_, _>>()?;
+/// let npv = series.net_present_value(Rate::<Monthly>::new(0.01)?)?;
+/// assert!((npv.value() - 18.2237).abs() < 1e-3);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+#[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq)]
+pub struct OwnedCashflows<P: Periodicity> {
+    flows: alloc::vec::Vec<Money>,
+    marker: PhantomData<P>,
+}
+
+#[cfg(feature = "alloc")]
+impl<P: Periodicity> OwnedCashflows<P> {
+    /// Takes ownership of `flows`; `flows[t]` occurs at period `t`.
+    #[must_use]
+    pub const fn new(flows: alloc::vec::Vec<Money>) -> Self {
+        Self {
+            flows,
+            marker: PhantomData,
+        }
+    }
+
+    /// Borrows the series as a [`Cashflows`] view — the bridge the forwarding
+    /// operations go through, and the way to reach any [`Cashflows`] method not
+    /// forwarded here.
+    #[must_use]
+    pub fn as_cashflows(&self) -> Cashflows<'_, P> {
+        Cashflows::new(&self.flows)
+    }
+
+    /// The underlying cashflows.
+    #[must_use]
+    pub fn as_slice(&self) -> &[Money] {
+        &self.flows
+    }
+
+    /// Consumes the series, returning the owned `Vec`.
+    #[must_use]
+    pub fn into_vec(self) -> alloc::vec::Vec<Money> {
+        self.flows
+    }
+
+    /// The number of cashflows in the series.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.flows.len()
+    }
+
+    /// Whether the series is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.flows.is_empty()
+    }
+
+    /// The net present value of the series discounted at `rate`. See
+    /// [`Cashflows::net_present_value`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Cashflows::net_present_value`].
+    pub fn net_present_value(&self, rate: Rate<P>) -> Result<Money, TvmError> {
+        self.as_cashflows().net_present_value(rate)
+    }
+
+    /// The net future value of the series compounded at `rate`. See
+    /// [`Cashflows::net_future_value`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Cashflows::net_future_value`].
+    pub fn net_future_value(&self, rate: Rate<P>) -> Result<Money, TvmError> {
+        self.as_cashflows().net_future_value(rate)
+    }
+
+    /// The internal rate of return from a default 10% guess. See
+    /// [`Cashflows::internal_rate_of_return`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Cashflows::internal_rate_of_return`].
+    pub fn internal_rate_of_return(&self) -> Result<Rate<P>, TvmError> {
+        self.as_cashflows().internal_rate_of_return()
+    }
+
+    /// The internal rate of return seeded with `guess`. See
+    /// [`Cashflows::internal_rate_of_return_from`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Cashflows::internal_rate_of_return_from`].
+    pub fn internal_rate_of_return_from(&self, guess: f64) -> Result<Rate<P>, TvmError> {
+        self.as_cashflows().internal_rate_of_return_from(guess)
+    }
+}
+
+/// The modified internal rate of return forwards like the others, but is gated on
+/// the transcendental-math features that give [`Cashflows`] its `mirr` (ADR-0026).
+#[cfg(all(feature = "alloc", any(feature = "std", feature = "libm")))]
+impl<P: Periodicity> OwnedCashflows<P> {
+    /// The modified internal rate of return. See
+    /// [`Cashflows::modified_internal_rate_of_return`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Cashflows::modified_internal_rate_of_return`].
+    pub fn modified_internal_rate_of_return(
+        &self,
+        finance_rate: Rate<P>,
+        reinvestment_rate: Rate<P>,
+    ) -> Result<Rate<P>, TvmError> {
+        self.as_cashflows()
+            .modified_internal_rate_of_return(finance_rate, reinvestment_rate)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<P: Periodicity> From<alloc::vec::Vec<Money>> for OwnedCashflows<P> {
+    fn from(flows: alloc::vec::Vec<Money>) -> Self {
+        Self::new(flows)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<P: Periodicity> From<Cashflows<'_, P>> for OwnedCashflows<P> {
+    /// Copies a borrowed series into an owned one.
+    fn from(borrowed: Cashflows<'_, P>) -> Self {
+        Self::new(borrowed.as_slice().to_vec())
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl<P: Periodicity> FromIterator<Money> for OwnedCashflows<P> {
+    /// Collects cashflows in period order (`0, 1, 2, …`) into an owned series.
+    fn from_iter<I: IntoIterator<Item = Money>>(iter: I) -> Self {
+        Self::new(iter.into_iter().collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::root::within;
@@ -569,6 +728,101 @@ mod tests {
                 Cashflows::<Monthly>::new(&flows)
                     .modified_internal_rate_of_return(rate(0.10), rate(0.10)),
                 Err(TvmError::RateOutOfRange)
+            );
+        }
+    }
+
+    #[cfg(feature = "alloc")]
+    mod owned {
+        use alloc::vec::Vec;
+
+        use super::{approx, Cashflows, Money, Monthly, Rate};
+        use crate::OwnedCashflows;
+
+        fn flows() -> Vec<Money> {
+            [-100.0, 60.0, 60.0]
+                .into_iter()
+                .map(|v| Money::agnostic(v).unwrap())
+                .collect()
+        }
+
+        #[test]
+        fn owned_operations_match_the_borrowed_view() {
+            let v = flows();
+            let rate = Rate::<Monthly>::new(0.01).unwrap();
+            let borrowed = Cashflows::<Monthly>::new(&v);
+            let owned = OwnedCashflows::<Monthly>::new(v.clone());
+
+            assert_eq!(
+                owned.net_present_value(rate).unwrap(),
+                borrowed.net_present_value(rate).unwrap()
+            );
+            assert_eq!(
+                owned.net_future_value(rate).unwrap(),
+                borrowed.net_future_value(rate).unwrap()
+            );
+            assert_eq!(
+                owned.internal_rate_of_return().unwrap(),
+                borrowed.internal_rate_of_return().unwrap()
+            );
+        }
+
+        #[test]
+        fn builds_from_an_iterator() {
+            let owned: OwnedCashflows<Monthly> = [-100.0, 60.0, 60.0]
+                .into_iter()
+                .map(Money::agnostic)
+                .collect::<Result<_, _>>()
+                .unwrap();
+            assert_eq!(owned.len(), 3);
+            assert!(approx(
+                owned.internal_rate_of_return().unwrap().value(),
+                0.130_662_386
+            ));
+        }
+
+        #[test]
+        fn from_vec_and_from_a_borrowed_view_agree() {
+            let v = flows();
+            let from_vec = OwnedCashflows::<Monthly>::from(v.clone());
+            let from_borrowed = OwnedCashflows::<Monthly>::from(Cashflows::<Monthly>::new(&v));
+            assert_eq!(from_vec, from_borrowed);
+            assert_eq!(from_vec.as_slice(), &v[..]);
+        }
+
+        #[test]
+        fn as_cashflows_bridges_and_into_vec_recovers() {
+            let v = flows();
+            let owned = OwnedCashflows::<Monthly>::new(v.clone());
+            assert_eq!(owned.as_cashflows().len(), 3);
+            assert!(!owned.is_empty());
+            assert_eq!(owned.into_vec(), v);
+        }
+
+        #[test]
+        fn an_empty_owned_series_is_zero() {
+            let owned = OwnedCashflows::<Monthly>::new(Vec::new());
+            assert!(owned.is_empty());
+            let rate = Rate::<Monthly>::new(0.05).unwrap();
+            assert_eq!(owned.net_present_value(rate).unwrap(), Money::ZERO);
+        }
+
+        #[cfg(any(feature = "std", feature = "libm"))]
+        #[test]
+        fn owned_mirr_matches_the_borrowed_view() {
+            let v: Vec<Money> = [-1000.0, -500.0, 800.0, 900.0]
+                .into_iter()
+                .map(|x| Money::agnostic(x).unwrap())
+                .collect();
+            let finance = Rate::<Monthly>::new(0.10).unwrap();
+            let reinvest = Rate::<Monthly>::new(0.12).unwrap();
+            assert_eq!(
+                OwnedCashflows::<Monthly>::new(v.clone())
+                    .modified_internal_rate_of_return(finance, reinvest)
+                    .unwrap(),
+                Cashflows::<Monthly>::new(&v)
+                    .modified_internal_rate_of_return(finance, reinvest)
+                    .unwrap()
             );
         }
     }
