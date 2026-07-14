@@ -4,8 +4,9 @@
 
 `time_value` is a type-safe time-value-of-money (TVM) library for Rust,
 published on crates.io as `time_value` (the GitHub repo is `time-value`,
-kebab-cased per the org ruleset). It is a deliberately type-heavy redesign for
-the `1.0` line — not a port of the old `0.x` series.
+kebab-cased per the org ruleset). It is a deliberately type-heavy redesign — not
+a port of the old `0.x` series — developed continuously, with no scheduled
+release (ADR-0038).
 
 The repo is a **Cargo workspace** (see `docs/adr/0002-workspace-layout.md`) of
 four crates — three primary, plus one internal support crate:
@@ -35,9 +36,13 @@ logged under `docs/adr/`.
 - **`#![no_std]` + zero dependencies.** Transcendental functions (`powf`, `ln`,
   `exp`) are `std`-only; when the API needs them, prefer an optional `libm`
   feature over an unconditional dependency.
-- **Currency is *not* type-tagged in `1.0`** — `Money` is a plain newtype.
-  Adding a feature-gated currency tag later is non-breaking; baking it in now
-  would not be removable without a major bump.
+- **Currency is a runtime *value* on `Money`, not a type tag** (ADR-0033/0034):
+  `Money` is an `f64` magnitude plus a runtime `Currency` (a closed
+  `#[non_exhaustive]` ISO-4217 enum); `XXX` is the currency-agnostic identity, and a
+  mismatch is a runtime `CurrencyMismatch`. Periodicity — static, known when the
+  model is written — is the crate's *only* compile-time tag; currency — dynamic,
+  chosen at runtime — is a value. (This supersedes ADR-0005's earlier "`Money` is a
+  plain untagged newtype" stance.)
 
 ## Tooling (Nix-native, no prek)
 
@@ -114,23 +119,24 @@ bacon.toml                # bacon jobs (default: clippy)
   fails or conflicts is ejected for a manual rebase. The repo-level ruleset is
   managed by hand (the `github-settings` IaC repo manages only *org-level*
   rulesets — `imports.tf`: "Repositories are no longer managed here").
-- Release: `release-plz.yml` drives per-crate versions, changelogs, tags, and
-  GitHub releases from Conventional Commits (`release-plz.toml`, `publish =
-  false`); `publish.yml` then `cargo publish`es via crates.io OIDC trusted
-  publishing (no token secret) on a version tag. **The first release ships all
-  three crates together at `1.0.0`** — the core is completed and hardened *before*
-  release (fallibility per ADR-0021, Tier-1 completeness), and the CLI/MCP launch
-  with it, rather than the core publishing first with the binaries deferred
-  (**ADR-0022**; tracked by the `1.0.0` milestone + the "Road to 1.0.0" epic #34,
-  with deferred work in the "Post-1.0 backlog" milestone). Old versions
-  `0.1.0`–`0.8.0` remain published+immutable.
-- Release setup status: Actions read/write + "allow Actions to create PRs" are
-  enabled (org-level, via the `github-settings` IaC repo); the crates.io Trusted
-  Publisher for `time_value` is registered. Still to do before the binaries
-  publish (issue #20): flip `-cli`/`-mcp` off `publish = false`, extend
-  `release-plz`/`publish.yml` to version + publish them, and register their
-  Trusted Publishers. The release-plz "chore: release v1.0.0" PR (#28) is **held**
-  until the `1.0.0` sequence completes.
+- **No scheduled release (ADR-0038).** The project is developed **continuously, for
+  its own sake** — there is no release target, no version goal, and no need to
+  classify work as release-relevant. Open issues are a flat, label-prioritized
+  backlog (no milestones; the old `1.0.0` / "Post-1.0 backlog" milestones and the
+  "Road to 1.0.0" epic are dissolved/closed). If and when it feels like a good spot,
+  the owner decides to cut a release; until then, just do the next useful work and
+  keep docs + ADRs current with each change.
+- Release *machinery* is wired but **inert**: `release-plz.yml` (per-crate versions,
+  changelogs, tags, GitHub releases from Conventional Commits; `release-plz.toml`,
+  `publish = false`) and `publish.yml` (`cargo publish` via crates.io OIDC trusted
+  publishing on a version tag) are ready but not driven. Crates keep their in-tree
+  versions; nothing is published; old `0.1.0`–`0.8.0` remain the separate, immutable
+  published history. The held `release-plz` release PR (#28) stays held.
+- **Cutting a release is solely the owner's call, whenever they choose it** — bumping
+  versions, flipping any crate's `publish = false`, extending
+  `release-plz`/`publish.yml`, tagging, or merging a release PR are out of scope for
+  ordinary development and never inferred from "the work looks done". (Remaining
+  publish setup, for whenever that day comes, is tracked in issue #20.)
 
 ## Deletion & creation
 
