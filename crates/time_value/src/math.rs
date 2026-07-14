@@ -19,6 +19,20 @@ pub(crate) fn powf(base: f64, exponent: f64) -> f64 {
     libm::pow(base, exponent)
 }
 
+/// `e` raised to the power `x`, via `std`.
+#[cfg(feature = "std")]
+#[inline]
+pub(crate) fn exp(x: f64) -> f64 {
+    x.exp()
+}
+
+/// `e` raised to the power `x`, via `libm` (for `no_std` builds).
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+#[inline]
+pub(crate) fn exp(x: f64) -> f64 {
+    libm::exp(x)
+}
+
 /// The natural logarithm of `x`, via `std`.
 #[cfg(feature = "std")]
 #[inline]
