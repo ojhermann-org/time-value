@@ -405,7 +405,7 @@ fn annual_rate(value: f64) -> Result<Rate<Annual>> {
     Rate::new(value).context("invalid rate (must be finite and greater than -100%)")
 }
 
-fn period(value: f64) -> Result<Period> {
+fn period(value: f64) -> Result<Period<Per>> {
     Period::new(value).context("invalid period count (must be finite and non-negative)")
 }
 

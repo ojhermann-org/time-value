@@ -136,7 +136,7 @@ impl<P: Periodicity> Schedule<P> {
     /// if `periods` is zero (nothing to amortise over).
     pub fn for_term(
         rate: Rate<P>,
-        periods: crate::Period,
+        periods: crate::Period<P>,
         principal: Money,
     ) -> Result<Self, TvmError> {
         let payment = crate::annuity::payment(rate, periods, principal)?;

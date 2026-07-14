@@ -36,7 +36,7 @@ use crate::{Money, Period, Periodicity, Rate, TvmError};
 /// (ADR-0021).
 pub fn present_value<P: Periodicity>(
     rate: Rate<P>,
-    periods: Period,
+    periods: Period<P>,
     future: Money,
 ) -> Result<Money, TvmError> {
     let growth = powf(1.0 + rate.value(), periods.value());
@@ -71,7 +71,7 @@ pub fn present_value<P: Periodicity>(
 /// (ADR-0021).
 pub fn future_value<P: Periodicity>(
     rate: Rate<P>,
-    periods: Period,
+    periods: Period<P>,
     present: Money,
 ) -> Result<Money, TvmError> {
     let growth = powf(1.0 + rate.value(), periods.value());
@@ -111,7 +111,7 @@ pub fn periods<P: Periodicity>(
     rate: Rate<P>,
     present: Money,
     future: Money,
-) -> Result<Period, TvmError> {
+) -> Result<Period<P>, TvmError> {
     let ratio = future.value() / present.value();
     if rate.value() == 0.0 || !ratio.is_finite() || ratio <= 0.0 {
         // No growth (rate 0), or a ratio with no real logarithm: `n` is undefined.
@@ -152,7 +152,7 @@ pub fn periods<P: Periodicity>(
 ///   is non-positive — e.g. `future / present` is negative — so the rate would be
 ///   `≤ −100%`.
 pub fn rate<P: Periodicity>(
-    periods: Period,
+    periods: Period<P>,
     present: Money,
     future: Money,
 ) -> Result<Rate<P>, TvmError> {
@@ -174,7 +174,7 @@ mod tests {
         d < 1e-6 && d > -1e-6
     }
 
-    fn setup() -> (Rate<Monthly>, Period, Money) {
+    fn setup() -> (Rate<Monthly>, Period<Monthly>, Money) {
         (
             Rate::<Monthly>::new(0.01).unwrap(),
             Period::new(12.0).unwrap(),
