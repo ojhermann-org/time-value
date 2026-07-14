@@ -410,7 +410,7 @@ fn period(value: f64) -> Result<Period> {
 }
 
 fn money(value: f64) -> Result<Money> {
-    Money::new(value).context("invalid amount (must be finite)")
+    Money::agnostic(value).context("invalid amount (must be finite)")
 }
 
 fn cashflows(values: &[f64]) -> Result<Vec<Money>> {

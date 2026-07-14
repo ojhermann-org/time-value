@@ -587,7 +587,7 @@ fn period(value: f64) -> Result<Period, ErrorData> {
 }
 
 fn money(value: f64) -> Result<Money, ErrorData> {
-    Money::new(value).map_err(tvm)
+    Money::agnostic(value).map_err(tvm)
 }
 
 fn cashflows(values: &[f64]) -> Result<Vec<Money>, ErrorData> {

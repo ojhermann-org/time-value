@@ -1,14 +1,20 @@
-//! [`Money`] — a validated monetary amount.
+//! [`Money`] — a validated monetary amount denominated in a [`Currency`].
 
 use core::fmt;
 use core::ops::Neg;
 
-use crate::TvmError;
+use crate::{Currency, TvmError};
 
-/// A monetary amount.
+/// A monetary amount: an `f64` magnitude together with the [`Currency`] it is
+/// denominated in.
 ///
-/// A plain newtype over `f64`; currency is intentionally **not** type-tagged in
-/// the `1.0` line (see `docs/adr/0005-domain-modelling-and-strong-typing.md`).
+/// Per `docs/adr/0033-core-domain-model-two-axes-and-an-f64-engine.md`, the crate
+/// is a TVM *computation engine* whose magnitudes are `f64` (transcendental TVM
+/// results are irrational, so an exact-decimal representation would promise a
+/// precision the mathematics does not have). Currency is *dynamic* data, so it is
+/// carried as a runtime value rather than a compile-time type tag
+/// (`docs/adr/0034-money-and-currency.md`). `Money` stays `Copy`, `no_std`, and
+/// allocation-free.
 ///
 /// Every `Money` is finite. The [`new`](Money::new) constructor rejects `NaN`
 /// and the infinities, and every operation that could leave the finite range —
@@ -21,56 +27,98 @@ use crate::TvmError;
 ///
 /// Cashflows are signed — an outflow is negative, an inflow positive.
 ///
+/// # Currency
+///
+/// [`Currency::Xxx`] (ISO 4217 "no currency") is the **currency-agnostic** amount
+/// and the identity on the currency axis: adding an `Xxx` amount to one in `C`
+/// yields `C`, while adding two *distinct* non-`Xxx` currencies is a
+/// [`TvmError::CurrencyMismatch`]. So pure-number TVM is all `Xxx` — construct it
+/// with [`agnostic`](Money::agnostic) — and [`ZERO`](Money::ZERO) is `0 XXX`, a
+/// neutral element that adds cleanly into any currency.
+///
+/// ```
+/// use time_value::{Currency, Money};
+///
+/// let fee = Money::new(25.0, Currency::Usd)?;
+/// let refund = -fee; // an inflow becomes an outflow
+/// assert_eq!(refund.value(), -25.0);
+/// assert_eq!(refund.currency(), Currency::Usd);
+///
+/// let total = fee.try_add(Money::new(75.0, Currency::Usd)?)?;
+/// let doubled = total.try_mul(2.0)?;
+/// assert_eq!(doubled.value(), 200.0);
+///
+/// // A currency-agnostic amount adopts whatever it is combined with.
+/// let bonus = fee.try_add(Money::agnostic(5.0)?)?;
+/// assert_eq!(bonus.currency(), Currency::Usd);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+///
 /// # Arithmetic
 ///
 /// Negation is a [`Neg`] operator: negating a finite amount is always finite, so
-/// it cannot fail. Addition, subtraction and scaling *can* leave `f64` range, so
-/// they are fallible [`try_add`](Self::try_add), [`try_sub`](Self::try_sub),
+/// it cannot fail. Addition, subtraction and scaling *can* leave `f64` range (and
+/// addition/subtraction can find mismatched currencies), so they are fallible
+/// [`try_add`](Self::try_add), [`try_sub`](Self::try_sub),
 /// [`try_mul`](Self::try_mul) and [`try_div`](Self::try_div) methods rather than
 /// operators — an operator cannot return a `Result`, and silently yielding an
 /// infinity is the foot-gun this crate exists to avoid
 /// (`docs/adr/0023-money-arithmetic-surface.md`).
-///
-/// ```
-/// use time_value::Money;
-///
-/// let fee = Money::new(25.0)?;
-/// let refund = -fee; // an inflow becomes an outflow
-/// assert_eq!(refund.value(), -25.0);
-///
-/// let total = fee.try_add(Money::new(75.0)?)?;
-/// let doubled = total.try_mul(2.0)?;
-/// assert_eq!(doubled.value(), 200.0);
-/// # Ok::<(), time_value::TvmError>(())
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct Money(f64);
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Money {
+    magnitude: f64,
+    currency: Currency,
+}
 
 impl Money {
-    /// Zero money.
-    pub const ZERO: Self = Self(0.0);
+    /// Zero money, denominated in [`Currency::Xxx`] — the additive identity
+    /// (ADR-0032), and currency-agnostic so it adds cleanly into any currency.
+    pub const ZERO: Self = Self {
+        magnitude: 0.0,
+        currency: Currency::Xxx,
+    };
 
-    /// Wraps `amount`.
+    /// Constructs `amount` denominated in `currency`.
     ///
     /// # Errors
     ///
     /// Returns [`TvmError::NonFiniteAmount`] if `amount` is not finite
     /// (`NaN`, `+∞`, or `-∞`).
-    pub fn new(amount: f64) -> Result<Self, TvmError> {
+    pub fn new(amount: f64, currency: Currency) -> Result<Self, TvmError> {
         if amount.is_finite() {
-            Ok(Self(amount))
+            Ok(Self {
+                magnitude: amount,
+                currency,
+            })
         } else {
             Err(TvmError::NonFiniteAmount)
         }
     }
 
-    /// The wrapped amount as a plain `f64`.
-    #[must_use]
-    pub const fn value(self) -> f64 {
-        self.0
+    /// Constructs a currency-agnostic amount ([`Currency::Xxx`]) — the pure-number
+    /// path, for TVM that is not denominated in any particular currency.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TvmError::NonFiniteAmount`] if `amount` is not finite.
+    pub fn agnostic(amount: f64) -> Result<Self, TvmError> {
+        Self::new(amount, Currency::Xxx)
     }
 
-    /// Constructs from the `f64` result of an operation, validating finiteness.
+    /// The magnitude as a plain `f64`.
+    #[must_use]
+    pub const fn value(self) -> f64 {
+        self.magnitude
+    }
+
+    /// The currency this amount is denominated in.
+    #[must_use]
+    pub const fn currency(self) -> Currency {
+        self.currency
+    }
+
+    /// Constructs from the `f64` result of an operation, tagging it `currency` and
+    /// validating finiteness.
     ///
     /// This is the overflow funnel: a non-finite result reaching here is a real
     /// value that exceeded the representable `f64` range, so it is
@@ -79,34 +127,43 @@ impl Money {
     /// [`TvmError::Undefined`] before reaching this point (ADR-0021, ADR-0031).
     /// Both are distinct from the [`TvmError::NonFiniteAmount`] that
     /// [`new`](Self::new) returns for a non-finite value supplied by a *caller*.
-    pub(crate) fn from_operation(amount: f64) -> Result<Self, TvmError> {
+    pub(crate) fn from_operation(amount: f64, currency: Currency) -> Result<Self, TvmError> {
         if amount.is_finite() {
-            Ok(Self(amount))
+            Ok(Self {
+                magnitude: amount,
+                currency,
+            })
         } else {
             Err(TvmError::Overflow)
         }
     }
 
-    /// Adds `rhs`.
+    /// Adds `rhs`, combining currencies by the [`Currency::Xxx`] identity rule.
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::Overflow`] if the sum leaves the finite `f64` range.
+    /// Returns [`TvmError::CurrencyMismatch`] if the two amounts are in distinct
+    /// non-`Xxx` currencies, or [`TvmError::Overflow`] if the sum leaves the finite
+    /// `f64` range.
     pub fn try_add(self, rhs: Self) -> Result<Self, TvmError> {
-        Self::from_operation(self.0 + rhs.0)
+        let currency = combine(self.currency, rhs.currency)?;
+        Self::from_operation(self.magnitude + rhs.magnitude, currency)
     }
 
-    /// Subtracts `rhs`.
+    /// Subtracts `rhs`, combining currencies by the [`Currency::Xxx`] identity rule.
     ///
     /// # Errors
     ///
-    /// Returns [`TvmError::Overflow`] if the difference leaves the finite `f64`
-    /// range.
+    /// Returns [`TvmError::CurrencyMismatch`] if the two amounts are in distinct
+    /// non-`Xxx` currencies, or [`TvmError::Overflow`] if the difference leaves the
+    /// finite `f64` range.
     pub fn try_sub(self, rhs: Self) -> Result<Self, TvmError> {
-        Self::from_operation(self.0 - rhs.0)
+        let currency = combine(self.currency, rhs.currency)?;
+        Self::from_operation(self.magnitude - rhs.magnitude, currency)
     }
 
-    /// Scales by `factor` — e.g. `payment.try_mul(12.0)` for an annual total.
+    /// Scales by `factor` — e.g. `payment.try_mul(12.0)` for an annual total. The
+    /// currency is preserved.
     ///
     /// # Errors
     ///
@@ -117,10 +174,11 @@ impl Money {
         if !factor.is_finite() {
             return Err(TvmError::Undefined);
         }
-        Self::from_operation(self.0 * factor)
+        Self::from_operation(self.magnitude * factor, self.currency)
     }
 
-    /// Divides by `divisor` — e.g. `total.try_div(12.0)` for a monthly share.
+    /// Divides by `divisor` — e.g. `total.try_div(12.0)` for a monthly share. The
+    /// currency is preserved.
     ///
     /// # Errors
     ///
@@ -132,11 +190,175 @@ impl Money {
         if divisor == 0.0 || divisor.is_nan() {
             return Err(TvmError::Undefined);
         }
-        Self::from_operation(self.0 / divisor)
+        Self::from_operation(self.magnitude / divisor, self.currency)
+    }
+
+    /// Rounds the magnitude to this amount's currency minor unit — a *presentation*
+    /// step, never used during computation (ADR-0033, ADR-0034).
+    ///
+    /// Uses the currency's [minor-unit exponent][Currency::minor_unit_exponent]
+    /// (`2` for `USD`, `0` for `JPY`, `3` for `BHD`), rounding half away from zero.
+    /// A currency with no minor unit — [`Currency::Xxx`], the precious metals, the
+    /// fund/testing codes — is returned unchanged. The currency is preserved.
+    ///
+    /// Because magnitudes are `f64`, a value that *looks* like it sits exactly on a
+    /// rounding boundary (e.g. `1.005`) may round either way, since it is stored as
+    /// the nearest representable double (here `1.00499…`, which rounds down). This
+    /// is presentation-only and consistent with the crate's approximate-real
+    /// precision contract (ADR-0033).
+    ///
+    /// Requires the `std` or `libm` feature (it rounds an `f64`).
+    ///
+    /// ```
+    /// use time_value::{Currency, Money};
+    ///
+    /// let usd = Money::new(2.348, Currency::Usd)?.round_to_currency();
+    /// assert_eq!(usd.value(), 2.35);
+    ///
+    /// let jpy = Money::new(1234.9, Currency::Jpy)?.round_to_currency();
+    /// assert_eq!(jpy.value(), 1235.0); // no minor unit
+    /// # Ok::<(), time_value::TvmError>(())
+    /// ```
+    #[cfg(any(feature = "std", feature = "libm"))]
+    #[must_use]
+    pub fn round_to_currency(self) -> Self {
+        match self.currency.minor_unit_exponent() {
+            // Exact small integer scales — avoids a transcendental `powi`.
+            Some(exponent) => {
+                let scale = [1.0, 10.0, 100.0, 1000.0, 10_000.0][exponent as usize];
+                Self {
+                    magnitude: crate::math::round(self.magnitude * scale) / scale,
+                    currency: self.currency,
+                }
+            }
+            None => self,
+        }
+    }
+
+    /// Converts this amount into another currency using a caller-supplied
+    /// [`FxRate`] (ADR-0034).
+    ///
+    /// The rate's [`from`](FxRate::from) must match this amount's currency;
+    /// the result is tagged the rate's [`to`](FxRate::to) currency. To convert the
+    /// other way, apply [`FxRate::inverse`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TvmError::CurrencyMismatch`] if `self.currency() != fx.from()`, or
+    /// [`TvmError::Overflow`] if the converted magnitude leaves the finite range.
+    ///
+    /// ```
+    /// use time_value::{Currency, FxRate, Money};
+    ///
+    /// let usd = Money::new(100.0, Currency::Usd)?;
+    /// let usd_to_eur = FxRate::new(Currency::Usd, Currency::Eur, 0.9)?;
+    /// let eur = usd.convert(usd_to_eur)?;
+    /// assert_eq!(eur.value(), 90.0);
+    /// assert_eq!(eur.currency(), Currency::Eur);
+    ///
+    /// // The same rate, inverted, converts back.
+    /// let back = eur.convert(usd_to_eur.inverse())?;
+    /// assert!((back.value() - 100.0).abs() < 1e-9);
+    /// # Ok::<(), time_value::TvmError>(())
+    /// ```
+    pub fn convert(self, fx: FxRate) -> Result<Self, TvmError> {
+        if self.currency != fx.from {
+            return Err(TvmError::CurrencyMismatch);
+        }
+        Self::from_operation(self.magnitude * fx.rate, fx.to)
     }
 }
 
-/// The default `Money` is [`ZERO`](Money::ZERO) — the additive identity
+/// Combines two currencies by the [`Currency::Xxx`] identity rule (ADR-0034): an
+/// agnostic `Xxx` amount adopts the other currency, equal currencies pass through,
+/// and two distinct non-`Xxx` currencies are a mismatch. Shared with the series
+/// operations, which fold it over their flows to find the one currency a monetary
+/// result is denominated in.
+pub(crate) fn combine(a: Currency, b: Currency) -> Result<Currency, TvmError> {
+    match (a, b) {
+        (Currency::Xxx, other) | (other, Currency::Xxx) => Ok(other),
+        _ if a == b => Ok(a),
+        _ => Err(TvmError::CurrencyMismatch),
+    }
+}
+
+/// A directional exchange rate: the price of one unit of [`from`](Self::from) in
+/// units of [`to`](Self::to) (ADR-0034).
+///
+/// Rates are **caller-supplied** — the core carries no rate data and stays
+/// `no_std`. Triangulation (via a base currency) and bid/ask spreads are out of
+/// scope: those are rate-*sourcing* concerns, not core arithmetic. A rate can be
+/// used in either direction via [`inverse`](Self::inverse).
+///
+/// ```
+/// use time_value::{Currency, FxRate};
+///
+/// let gbp_to_usd = FxRate::new(Currency::Gbp, Currency::Usd, 1.25)?;
+/// assert_eq!(gbp_to_usd.rate(), 1.25);
+///
+/// let usd_to_gbp = gbp_to_usd.inverse();
+/// assert_eq!(usd_to_gbp.from(), Currency::Usd);
+/// assert_eq!(usd_to_gbp.to(), Currency::Gbp);
+/// assert_eq!(usd_to_gbp.rate(), 1.0 / 1.25);
+/// # Ok::<(), time_value::TvmError>(())
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FxRate {
+    from: Currency,
+    to: Currency,
+    rate: f64,
+}
+
+impl FxRate {
+    /// Constructs the rate that prices one unit of `from` at `rate` units of `to`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TvmError::InvalidExchangeRate`] if `rate` is not finite or is not
+    /// strictly positive (a non-positive exchange rate is economically
+    /// meaningless).
+    pub fn new(from: Currency, to: Currency, rate: f64) -> Result<Self, TvmError> {
+        if rate.is_finite() && rate > 0.0 {
+            Ok(Self { from, to, rate })
+        } else {
+            Err(TvmError::InvalidExchangeRate)
+        }
+    }
+
+    /// The source currency (the unit being priced).
+    #[must_use]
+    pub const fn from(self) -> Currency {
+        self.from
+    }
+
+    /// The target currency (the unit the price is expressed in).
+    #[must_use]
+    pub const fn to(self) -> Currency {
+        self.to
+    }
+
+    /// The exchange rate — units of [`to`](Self::to) per unit of [`from`](Self::from).
+    #[must_use]
+    pub const fn rate(self) -> f64 {
+        self.rate
+    }
+
+    /// The reverse rate: swaps `from`/`to` and reciprocates the rate, so it
+    /// converts [`to`](Self::to) back into [`from`](Self::from).
+    ///
+    /// Infallible: the rate is finite and strictly positive by construction, so its
+    /// reciprocal is finite and strictly positive too.
+    #[must_use]
+    pub fn inverse(self) -> Self {
+        Self {
+            from: self.to,
+            to: self.from,
+            rate: 1.0 / self.rate,
+        }
+    }
+}
+
+/// The default `Money` is [`ZERO`](Money::ZERO) — the additive identity, `0 XXX`
 /// (ADR-0032).
 impl Default for Money {
     fn default() -> Self {
@@ -144,8 +366,9 @@ impl Default for Money {
     }
 }
 
-/// Fallibly wraps an `f64`, mirroring [`Money::new`]: lets a call site that
-/// expects a `Money` use `f64::try_into()` (ADR-0032).
+/// Fallibly wraps an `f64` as a currency-agnostic amount, mirroring
+/// [`Money::agnostic`]: lets a call site that expects a `Money` use
+/// `f64::try_into()` on the pure-number path (ADR-0032).
 ///
 /// # Errors
 ///
@@ -154,11 +377,12 @@ impl TryFrom<f64> for Money {
     type Error = TvmError;
 
     fn try_from(amount: f64) -> Result<Self, Self::Error> {
-        Self::new(amount)
+        Self::agnostic(amount)
     }
 }
 
-/// Extracts the plain amount, mirroring [`Money::value`] (ADR-0032).
+/// Extracts the plain magnitude, mirroring [`Money::value`] (ADR-0032) — the
+/// currency is dropped.
 ///
 /// Only `Money` gets a `From<_> for f64`: converting a [`Rate`](crate::Rate)
 /// this way would silently drop its periodicity tag — the very safety the type
@@ -169,20 +393,37 @@ impl From<Money> for f64 {
     }
 }
 
-/// Flips the sign — an inflow becomes an outflow, and vice versa.
+/// Flips the sign — an inflow becomes an outflow, and vice versa. The currency is
+/// preserved.
 ///
 /// Infallible: the negation of a finite amount is finite (ADR-0021).
 impl Neg for Money {
     type Output = Self;
 
     fn neg(self) -> Self {
-        Self(-self.0)
+        Self {
+            magnitude: -self.magnitude,
+            currency: self.currency,
+        }
     }
 }
 
+/// Orders amounts by magnitude *within a compatible currency*. Ordering is only
+/// defined when the currencies combine (equal, or either is [`Currency::Xxx`]);
+/// two distinct non-`Xxx` currencies are unordered, so comparison yields `None`
+/// (ADR-0034).
+impl PartialOrd for Money {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        combine(self.currency, other.currency).ok()?;
+        self.magnitude.partial_cmp(&other.magnitude)
+    }
+}
+
+/// Formats the bare magnitude. Currency-aware formatting (with the code and
+/// minor-unit rounding) is a presentation concern left to the caller.
 impl fmt::Display for Money {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        self.magnitude.fmt(f)
     }
 }
 
@@ -192,44 +433,80 @@ mod tests {
     // correct here.
     #![allow(clippy::float_cmp)]
 
-    use crate::{Money, TvmError};
+    use crate::{Currency, Money, TvmError};
 
     #[test]
     fn accepts_finite_values() {
-        assert_eq!(Money::new(42.5).unwrap().value(), 42.5);
-        assert_eq!(Money::new(-42.5).unwrap().value(), -42.5);
+        assert_eq!(Money::new(42.5, Currency::Usd).unwrap().value(), 42.5);
+        assert_eq!(Money::new(-42.5, Currency::Usd).unwrap().value(), -42.5);
         assert_eq!(Money::ZERO.value(), 0.0);
     }
 
     #[test]
-    fn rejects_non_finite_values() {
-        assert_eq!(Money::new(f64::NAN), Err(TvmError::NonFiniteAmount));
-        assert_eq!(Money::new(f64::INFINITY), Err(TvmError::NonFiniteAmount));
+    fn carries_its_currency() {
         assert_eq!(
-            Money::new(f64::NEG_INFINITY),
+            Money::new(1.0, Currency::Eur).unwrap().currency(),
+            Currency::Eur
+        );
+        assert_eq!(Money::agnostic(1.0).unwrap().currency(), Currency::Xxx);
+        assert_eq!(Money::ZERO.currency(), Currency::Xxx);
+    }
+
+    #[test]
+    fn rejects_non_finite_values() {
+        assert_eq!(
+            Money::new(f64::NAN, Currency::Usd),
+            Err(TvmError::NonFiniteAmount)
+        );
+        assert_eq!(
+            Money::agnostic(f64::INFINITY),
+            Err(TvmError::NonFiniteAmount)
+        );
+        assert_eq!(
+            Money::new(f64::NEG_INFINITY, Currency::Usd),
             Err(TvmError::NonFiniteAmount)
         );
     }
 
     /// The largest finite `f64`; doubling it overflows.
     fn huge() -> Money {
-        Money::new(f64::MAX).unwrap()
+        Money::agnostic(f64::MAX).unwrap()
     }
 
     #[test]
-    fn negation_flips_the_sign() {
-        assert_eq!((-Money::new(42.5).unwrap()).value(), -42.5);
-        assert_eq!((-Money::new(-42.5).unwrap()).value(), 42.5);
+    fn negation_flips_the_sign_and_keeps_currency() {
+        let m = Money::new(42.5, Currency::Usd).unwrap();
+        assert_eq!((-m).value(), -42.5);
+        assert_eq!((-m).currency(), Currency::Usd);
         assert_eq!(-(-huge()), huge());
     }
 
     #[test]
     fn adds_and_subtracts() {
-        let a = Money::new(100.0).unwrap();
-        let b = Money::new(25.0).unwrap();
+        let a = Money::new(100.0, Currency::Usd).unwrap();
+        let b = Money::new(25.0, Currency::Usd).unwrap();
         assert_eq!(a.try_add(b).unwrap().value(), 125.0);
+        assert_eq!(a.try_add(b).unwrap().currency(), Currency::Usd);
         assert_eq!(a.try_sub(b).unwrap().value(), 75.0);
         assert_eq!(b.try_sub(a).unwrap().value(), -75.0);
+    }
+
+    #[test]
+    fn agnostic_amounts_adopt_the_other_currency() {
+        let usd = Money::new(100.0, Currency::Usd).unwrap();
+        let bonus = Money::agnostic(25.0).unwrap();
+        assert_eq!(usd.try_add(bonus).unwrap().currency(), Currency::Usd);
+        assert_eq!(bonus.try_add(usd).unwrap().currency(), Currency::Usd);
+        // Two agnostic amounts stay agnostic.
+        assert_eq!(bonus.try_add(bonus).unwrap().currency(), Currency::Xxx);
+    }
+
+    #[test]
+    fn distinct_currencies_are_a_mismatch() {
+        let usd = Money::new(100.0, Currency::Usd).unwrap();
+        let eur = Money::new(100.0, Currency::Eur).unwrap();
+        assert_eq!(usd.try_add(eur), Err(TvmError::CurrencyMismatch));
+        assert_eq!(usd.try_sub(eur), Err(TvmError::CurrencyMismatch));
     }
 
     #[test]
@@ -239,9 +516,10 @@ mod tests {
     }
 
     #[test]
-    fn scales_by_a_factor() {
-        let payment = Money::new(250.0).unwrap();
+    fn scales_by_a_factor_preserving_currency() {
+        let payment = Money::new(250.0, Currency::Usd).unwrap();
         assert_eq!(payment.try_mul(12.0).unwrap().value(), 3000.0);
+        assert_eq!(payment.try_mul(12.0).unwrap().currency(), Currency::Usd);
         assert_eq!(payment.try_mul(0.0).unwrap().value(), 0.0);
         assert_eq!(payment.try_mul(-1.0).unwrap().value(), -250.0);
     }
@@ -252,19 +530,20 @@ mod tests {
         // factor has no defined product, so it is Undefined (ADR-0031).
         assert_eq!(huge().try_mul(2.0), Err(TvmError::Overflow));
         assert_eq!(
-            Money::new(1.0).unwrap().try_mul(f64::INFINITY),
+            Money::agnostic(1.0).unwrap().try_mul(f64::INFINITY),
             Err(TvmError::Undefined)
         );
         assert_eq!(
-            Money::new(1.0).unwrap().try_mul(f64::NAN),
+            Money::agnostic(1.0).unwrap().try_mul(f64::NAN),
             Err(TvmError::Undefined)
         );
     }
 
     #[test]
-    fn divides_by_a_divisor() {
-        let total = Money::new(3000.0).unwrap();
+    fn divides_by_a_divisor_preserving_currency() {
+        let total = Money::new(3000.0, Currency::Usd).unwrap();
         assert_eq!(total.try_div(12.0).unwrap().value(), 250.0);
+        assert_eq!(total.try_div(12.0).unwrap().currency(), Currency::Usd);
         assert_eq!(total.try_div(-12.0).unwrap().value(), -250.0);
         // An infinite divisor yields zero, which is finite — not an error.
         assert_eq!(total.try_div(f64::INFINITY).unwrap().value(), 0.0);
@@ -272,7 +551,7 @@ mod tests {
 
     #[test]
     fn div_rejects_a_non_finite_result() {
-        let total = Money::new(3000.0).unwrap();
+        let total = Money::agnostic(3000.0).unwrap();
         // Division by zero or NaN is undefined; a finite divisor that overflows
         // the range is an Overflow (ADR-0031).
         assert_eq!(total.try_div(0.0), Err(TvmError::Undefined));
@@ -283,13 +562,38 @@ mod tests {
     }
 
     #[test]
+    fn ordering_is_within_a_compatible_currency() {
+        let a = Money::new(100.0, Currency::Usd).unwrap();
+        let b = Money::new(200.0, Currency::Usd).unwrap();
+        assert!(a < b);
+        // Agnostic amounts are comparable with any currency.
+        assert!(Money::agnostic(50.0).unwrap() < a);
+        // Distinct currencies are unordered.
+        let eur = Money::new(200.0, Currency::Eur).unwrap();
+        assert_eq!(a.partial_cmp(&eur), None);
+    }
+
+    #[test]
+    fn equality_distinguishes_currency() {
+        assert_ne!(
+            Money::new(1.0, Currency::Usd).unwrap(),
+            Money::new(1.0, Currency::Eur).unwrap()
+        );
+        assert_eq!(
+            Money::new(1.0, Currency::Usd).unwrap(),
+            Money::new(1.0, Currency::Usd).unwrap()
+        );
+    }
+
+    #[test]
     fn default_is_zero() {
         assert_eq!(Money::default(), Money::ZERO);
     }
 
     #[test]
-    fn try_from_mirrors_new() {
+    fn try_from_mirrors_agnostic() {
         assert_eq!(Money::try_from(42.5).unwrap().value(), 42.5);
+        assert_eq!(Money::try_from(42.5).unwrap().currency(), Currency::Xxx);
         assert_eq!(Money::try_from(f64::NAN), Err(TvmError::NonFiniteAmount));
         // Usable through the `TryInto` sugar at an inference site.
         let m: Money = 10.0.try_into().unwrap();
@@ -297,9 +601,90 @@ mod tests {
     }
 
     #[test]
-    fn into_f64_is_the_amount() {
-        assert_eq!(f64::from(Money::new(42.5).unwrap()), 42.5);
-        let x: f64 = Money::new(-7.0).unwrap().into();
+    fn into_f64_is_the_magnitude() {
+        assert_eq!(f64::from(Money::new(42.5, Currency::Usd).unwrap()), 42.5);
+        let x: f64 = Money::new(-7.0, Currency::Eur).unwrap().into();
         assert_eq!(x, -7.0);
+    }
+
+    #[cfg(any(feature = "std", feature = "libm"))]
+    #[test]
+    fn rounds_to_the_currency_minor_unit() {
+        // 2 decimals for USD, 0 for JPY, 3 for BHD; half away from zero. Example
+        // values are chosen to avoid f64 tie-representation ambiguity.
+        assert_eq!(
+            Money::new(2.348, Currency::Usd)
+                .unwrap()
+                .round_to_currency()
+                .value(),
+            2.35
+        );
+        assert_eq!(
+            Money::new(2.344, Currency::Usd)
+                .unwrap()
+                .round_to_currency()
+                .value(),
+            2.34
+        );
+        assert_eq!(
+            Money::new(1234.9, Currency::Jpy)
+                .unwrap()
+                .round_to_currency()
+                .value(),
+            1235.0
+        );
+        assert_eq!(
+            Money::new(1.23456, Currency::Bhd)
+                .unwrap()
+                .round_to_currency()
+                .value(),
+            1.235
+        );
+        // No minor unit — unchanged; currency preserved.
+        let gold = Money::new(1.23456, Currency::Xau)
+            .unwrap()
+            .round_to_currency();
+        assert_eq!(gold.value(), 1.23456);
+        assert_eq!(gold.currency(), Currency::Xau);
+    }
+
+    #[test]
+    fn fx_convert_round_trips() {
+        use crate::FxRate;
+        let usd = Money::new(100.0, Currency::Usd).unwrap();
+        let fx = FxRate::new(Currency::Usd, Currency::Eur, 0.9).unwrap();
+        let eur = usd.convert(fx).unwrap();
+        assert_eq!(eur.value(), 90.0);
+        assert_eq!(eur.currency(), Currency::Eur);
+        let back = eur.convert(fx.inverse()).unwrap();
+        assert!((back.value() - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn fx_convert_requires_matching_from_currency() {
+        let eur = Money::new(100.0, Currency::Eur).unwrap();
+        let fx = crate::FxRate::new(Currency::Usd, Currency::Gbp, 0.8).unwrap();
+        assert_eq!(eur.convert(fx), Err(TvmError::CurrencyMismatch));
+    }
+
+    #[test]
+    fn fx_rate_rejects_non_positive_or_non_finite() {
+        use crate::FxRate;
+        assert_eq!(
+            FxRate::new(Currency::Usd, Currency::Eur, 0.0),
+            Err(TvmError::InvalidExchangeRate)
+        );
+        assert_eq!(
+            FxRate::new(Currency::Usd, Currency::Eur, -1.0),
+            Err(TvmError::InvalidExchangeRate)
+        );
+        assert_eq!(
+            FxRate::new(Currency::Usd, Currency::Eur, f64::NAN),
+            Err(TvmError::InvalidExchangeRate)
+        );
+        assert_eq!(
+            FxRate::new(Currency::Usd, Currency::Eur, f64::INFINITY),
+            Err(TvmError::InvalidExchangeRate)
+        );
     }
 }

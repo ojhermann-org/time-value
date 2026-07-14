@@ -50,7 +50,13 @@
           hooks = {
             rustfmt.enable = true;
             nixfmt.enable = true;
-            typos.enable = true;
+            typos = {
+              enable = true;
+              # `currency.rs` is a generated ISO 4217 data table — 177 currency
+              # codes and their (often non-English) names — which a spell-checker
+              # will always fight, so exclude it from typos.
+              excludes = [ "crates/time_value/src/currency\\.rs" ];
+            };
             trim-trailing-whitespace.enable = true;
             end-of-file-fixer.enable = true;
             check-toml.enable = true;
