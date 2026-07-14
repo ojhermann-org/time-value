@@ -64,6 +64,11 @@ jobs:
       - name: Clippy (no_std + libm)
         run: nix develop -c cargo clippy -p time_value --no-default-features --features libm --all-targets -- -D warnings
 
+      # The serde derives must stay no_std-clean: --all-features pulls in std, so
+      # check the pure no_std + serde build explicitly (ADR-0042).
+      - name: Clippy (no_std + serde)
+        run: nix develop -c cargo clippy -p time_value --no-default-features --features serde --all-targets -- -D warnings
+
       # `--all-features` so feature-gated operations (and their tests) are
       # exercised, not just compiled.
       - name: Test

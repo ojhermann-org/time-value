@@ -37,7 +37,7 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0016](0016-msrv-and-toolchain-bump.md) | Toolchain & MSRV bump to 1.88 for the MCP server | Accepted (amended by 0017) |
 | [0017](0017-per-crate-msrv-core-1.85.md) | Per-crate MSRV — the core keeps 1.85, verified separately | Accepted |
 | [0018](0018-kebab-case-binary-crate-names.md) | Kebab-case binary crate names | Accepted |
-| [0019](0019-1.0-public-api-decisions.md) | 1.0 public API decisions | Accepted (§2 superseded by 0021) |
+| [0019](0019-1.0-public-api-decisions.md) | 1.0 public API decisions | Accepted (§2 superseded by 0021; §1 serde drop reversed by 0042) |
 | [0020](0020-robust-irr-newton-with-bisection-fallback.md) | Robust IRR — Newton with a bisection fallback | Accepted (amended by 0021, 0025) |
 | [0021](0021-fallible-operations-on-non-finite-results.md) | Operations are fallible when their result can be non-finite | Accepted (amended by 0023) |
 | [0022](0022-core-first-sequencing-before-the-first-release.md) | Core-first sequencing before the first release | Accepted |
@@ -60,3 +60,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0039](0039-typed-output-layer-for-the-binaries.md) | A typed output layer for the binaries — "types in, types out" | Accepted |
 | [0040](0040-fx-convert-in-the-binaries.md) | FX convert in the binaries — a standalone `convert` surface | Accepted |
 | [0041](0041-continuous-compounding-in-the-binaries.md) | Continuous compounding in the binaries — a `continuous` family | Accepted |
+| [0042](0042-serde-support.md) | `serde` support — an optional, validating wire format | Accepted (amends 0019) |
