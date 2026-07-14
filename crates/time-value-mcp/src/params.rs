@@ -8,6 +8,23 @@
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+/// The compounding periodicity a `rate_*` tool operates at — the only place a
+/// periodicity is a runtime input (ADR-0028 §3). A closed set, so it is a typed
+/// enum rather than a free string (ADR-0039): an unknown value is refused by
+/// deserialization at the boundary, and the schema advertises the six choices.
+/// Serialized names are lower-kebab (`semi-annual`), matching the marker types
+/// in the core.
+#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum Periodicity {
+    Daily,
+    Weekly,
+    Monthly,
+    Quarterly,
+    SemiAnnual,
+    Annual,
+}
+
 /// A per-period rate and a cashflow series — inputs for `npv` and `nfv`.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct SeriesInput {
@@ -224,9 +241,8 @@ pub(crate) struct GrowingPerpetuityInput {
 pub(crate) struct RateEffectiveAnnualInput {
     /// The per-period rate.
     pub rate: f64,
-    /// The periodicity: `daily`, `weekly`, `monthly`, `quarterly`,
-    /// `semi-annual`, or `annual`.
-    pub periodicity: String,
+    /// The periodicity the rate is expressed in.
+    pub periodicity: Periodicity,
 }
 
 /// Input for the `rate_convert` tool.
@@ -235,9 +251,9 @@ pub(crate) struct RateConvertInput {
     /// The per-period rate expressed under `from`.
     pub rate: f64,
     /// The periodicity the rate is expressed in.
-    pub from: String,
+    pub from: Periodicity,
     /// The periodicity to express the rate in.
-    pub to: String,
+    pub to: Periodicity,
 }
 
 /// Input for the `rate_from_nominal` tool.
@@ -246,7 +262,7 @@ pub(crate) struct RateFromNominalInput {
     /// The nominal annual rate (APR).
     pub nominal: f64,
     /// The compounding periodicity.
-    pub periodicity: String,
+    pub periodicity: Periodicity,
 }
 
 /// Input for the `amortize` tool. Provide exactly one of `periods` (amortise over
