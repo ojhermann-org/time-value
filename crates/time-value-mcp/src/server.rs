@@ -10,7 +10,7 @@
 
 use rmcp::{
     handler::server::{tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ServerCapabilities, ServerInfo},
+    model::{ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, ErrorData, Json, ServerHandler,
 };
 use time_value::{
@@ -26,7 +26,7 @@ use crate::params::{
     RateEffectiveAnnualInput, RateFromNominalInput, SeriesInput, SingleSumPeriodsInput,
     SingleSumRateInput,
 };
-use crate::results::{MoneyResult, ScalarResult};
+use crate::results::{MoneyResult, ScalarResult, ScheduleResult};
 
 /// Run `$body` with the type alias `$ty` bound to the core periodicity marker for
 /// the [`Periodicity`] value `$value`. Used by the `rate_*` conversion tools,
@@ -524,7 +524,7 @@ impl TimeValueServer {
     fn amortize(
         &self,
         Parameters(input): Parameters<AmortizeInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<ScheduleResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let r = rate(input.rate)?;
         let principal = money(input.principal, currency)?;
@@ -550,27 +550,7 @@ impl TimeValueServer {
         }
         .map_err(tvm)?;
 
-        let rows: Vec<serde_json::Value> = schedule
-            .map(|i| {
-                serde_json::json!({
-                    "period": i.period,
-                    "payment": i.payment.value(),
-                    "interest": i.interest.value(),
-                    "principal": i.principal.value(),
-                    "balance": i.balance.value(),
-                })
-            })
-            .collect();
-        // One field keyed by the operation (like the scalar tools), whose value is
-        // the tabular array (ADR-0028), plus a `currency` field when non-`Xxx`.
-        let mut object = serde_json::Map::new();
-        object.insert("amortize".to_string(), serde_json::Value::Array(rows));
-        if currency != Currency::Xxx {
-            object.insert("currency".to_string(), serde_json::json!(currency.code()));
-        }
-        Ok(CallToolResult::structured(serde_json::Value::Object(
-            object,
-        )))
+        Ok(Json(ScheduleResult::new(schedule, currency)))
     }
 }
 

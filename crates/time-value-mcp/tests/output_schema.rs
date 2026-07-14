@@ -307,3 +307,19 @@ fn rate_output_conforms_to_declared_schema() {
         },
     ]);
 }
+
+/// The amortize tool — a tabular result (`{ schedule: [rows], currency? }`),
+/// exercising the harness's array + `$ref` resolution over the row DTO.
+#[test]
+fn amortize_output_conforms_to_declared_schema() {
+    check_conformance(&[
+        Case {
+            tool: "amortize",
+            args: json!({"rate":0.10,"principal":1000,"payment":500,"currency":"USD"}),
+        },
+        Case {
+            tool: "amortize",
+            args: json!({"rate":0.01,"principal":1000,"periods":12}),
+        },
+    ]);
+}
