@@ -963,6 +963,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "predicates",
+ "serde",
  "serde_json",
  "time-value-daycount",
  "time_value",
