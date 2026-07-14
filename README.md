@@ -28,7 +28,8 @@ As a library ([`crates/time_value`](crates/time_value)):
 ```rust
 use time_value::{Cashflows, Money, Monthly, Rate};
 
-let flows = [Money::new(-100.0)?, Money::new(60.0)?, Money::new(60.0)?];
+// Pure-number TVM is currency-agnostic; `Money::new(amount, currency)` denominates it.
+let flows = [Money::agnostic(-100.0)?, Money::agnostic(60.0)?, Money::agnostic(60.0)?];
 let project = Cashflows::<Monthly>::new(&flows);
 let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?); // ≈ 18.22
 let irr = project.internal_rate_of_return()?;                     // ≈ 0.1307

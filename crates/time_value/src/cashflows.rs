@@ -5,8 +5,9 @@ use core::marker::PhantomData;
 
 #[cfg(any(feature = "std", feature = "libm"))]
 use crate::math::powf;
+use crate::money::combine;
 use crate::root::{self, abs};
-use crate::{Money, Periodicity, Rate, TvmError};
+use crate::{Currency, Money, Periodicity, Rate, TvmError};
 
 /// A periodicity-tagged series of cashflows at consecutive periods `0, 1, 2, …`.
 ///
@@ -23,7 +24,7 @@ use crate::{Money, Periodicity, Rate, TvmError};
 /// ```
 /// use time_value::{Cashflows, Money, Monthly, Rate};
 ///
-/// let flows = [Money::new(-100.0)?, Money::new(60.0)?, Money::new(60.0)?];
+/// let flows = [Money::agnostic(-100.0)?, Money::agnostic(60.0)?, Money::agnostic(60.0)?];
 /// let series = Cashflows::<Monthly>::new(&flows);
 /// let rate = Rate::<Monthly>::new(0.01)?;
 ///
@@ -37,7 +38,7 @@ use crate::{Money, Periodicity, Rate, TvmError};
 /// ```compile_fail
 /// use time_value::{Annual, Cashflows, Money, Monthly, Rate};
 ///
-/// let flows = [Money::new(-100.0).unwrap(), Money::new(60.0).unwrap()];
+/// let flows = [Money::agnostic(-100.0).unwrap(), Money::agnostic(60.0).unwrap()];
 /// let series = Cashflows::<Monthly>::new(&flows);
 /// let annual = Rate::<Annual>::new(0.05).unwrap();
 /// let _ = series.net_present_value(annual); // mismatched periodicity — won't compile
@@ -76,6 +77,22 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
         self.flows.is_empty()
     }
 
+    /// The single [`Currency`] the series is denominated in, by the
+    /// [`Currency::Xxx`] identity rule — the denomination of any monetary result.
+    /// An empty (or wholly agnostic) series is [`Currency::Xxx`].
+    ///
+    /// # Errors
+    ///
+    /// [`TvmError::CurrencyMismatch`] if the flows mix distinct non-`Xxx`
+    /// currencies (ADR-0034).
+    fn currency(self) -> Result<Currency, TvmError> {
+        let mut acc = Currency::Xxx;
+        for cf in self.flows {
+            acc = combine(acc, cf.currency())?;
+        }
+        Ok(acc)
+    }
+
     /// The net present value of the series discounted at `rate`.
     ///
     /// `NPV = Σₜ CFₜ / (1 + r)ᵗ`, evaluated with only elementary arithmetic (no
@@ -93,12 +110,13 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     /// which needs cashflows near `f64::MAX` or a rate a hair above `−100%`
     /// (ADR-0021).
     pub fn net_present_value(self, rate: Rate<P>) -> Result<Money, TvmError> {
+        let currency = self.currency()?;
         let discount = 1.0 / (1.0 + rate.value());
         let mut acc = 0.0;
         for cf in self.flows.iter().rev() {
             acc = acc * discount + cf.value();
         }
-        Money::from_operation(acc)
+        Money::from_operation(acc, currency)
     }
 
     /// The net future value of the series at its final period, compounded at
@@ -112,12 +130,13 @@ impl<'a, P: Periodicity> Cashflows<'a, P> {
     /// [`TvmError::Overflow`] if the compounded sum overflows to a
     /// non-finite value (ADR-0021).
     pub fn net_future_value(self, rate: Rate<P>) -> Result<Money, TvmError> {
+        let currency = self.currency()?;
         let growth = 1.0 + rate.value();
         let mut acc = 0.0;
         for cf in self.flows {
             acc = acc * growth + cf.value();
         }
-        Money::from_operation(acc)
+        Money::from_operation(acc, currency)
     }
 
     /// The internal rate of return: the [`Rate<P>`] at which the series' net
@@ -239,10 +258,10 @@ impl<P: Periodicity> Cashflows<'_, P> {
     ///
     /// // Pay 1000 now and 500 next month, then receive 800 and 900.
     /// let flows = [
-    ///     Money::new(-1000.0)?,
-    ///     Money::new(-500.0)?,
-    ///     Money::new(800.0)?,
-    ///     Money::new(900.0)?,
+    ///     Money::agnostic(-1000.0)?,
+    ///     Money::agnostic(-500.0)?,
+    ///     Money::agnostic(800.0)?,
+    ///     Money::agnostic(900.0)?,
     /// ];
     /// let project = Cashflows::<Monthly>::new(&flows);
     ///
@@ -330,9 +349,9 @@ mod tests {
     fn money(values: &[f64]) -> [Money; 3] {
         assert_eq!(values.len(), 3);
         [
-            Money::new(values[0]).unwrap(),
-            Money::new(values[1]).unwrap(),
-            Money::new(values[2]).unwrap(),
+            Money::agnostic(values[0]).unwrap(),
+            Money::agnostic(values[1]).unwrap(),
+            Money::agnostic(values[2]).unwrap(),
         ]
     }
 
@@ -439,7 +458,10 @@ mod tests {
     fn npv_and_nfv_overflow_to_a_non_finite_result() {
         // Two near-max cashflows sum past `f64::MAX`, so both discounted and
         // compounded totals overflow — surfaced as an error, not a silent `inf`.
-        let big = [Money::new(f64::MAX).unwrap(), Money::new(f64::MAX).unwrap()];
+        let big = [
+            Money::agnostic(f64::MAX).unwrap(),
+            Money::agnostic(f64::MAX).unwrap(),
+        ];
         let series = Cashflows::<Monthly>::new(&big);
         let rate = Rate::<Monthly>::new(0.0).unwrap();
         assert_eq!(series.net_present_value(rate), Err(TvmError::Overflow));
@@ -479,10 +501,10 @@ mod tests {
         fn series(values: &[f64]) -> [Money; 4] {
             assert_eq!(values.len(), 4);
             [
-                Money::new(values[0]).unwrap(),
-                Money::new(values[1]).unwrap(),
-                Money::new(values[2]).unwrap(),
-                Money::new(values[3]).unwrap(),
+                Money::agnostic(values[0]).unwrap(),
+                Money::agnostic(values[1]).unwrap(),
+                Money::agnostic(values[2]).unwrap(),
+                Money::agnostic(values[3]).unwrap(),
             ]
         }
 
@@ -521,7 +543,7 @@ mod tests {
 
         #[test]
         fn single_cashflow_has_no_span() {
-            let flows = [Money::new(-1000.0).unwrap()];
+            let flows = [Money::agnostic(-1000.0).unwrap()];
             assert_eq!(
                 Cashflows::<Monthly>::new(&flows)
                     .modified_internal_rate_of_return(rate(0.10), rate(0.10)),

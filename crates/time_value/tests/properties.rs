@@ -31,7 +31,7 @@ proptest! {
     fn npv_at_zero_rate_is_the_plain_sum(
         amounts in prop::collection::vec(-1e6f64..1e6, 1..=16),
     ) {
-        let flows: Vec<Money> = amounts.iter().map(|&a| Money::new(a).unwrap()).collect();
+        let flows: Vec<Money> = amounts.iter().map(|&a| Money::agnostic(a).unwrap()).collect();
         let series = Cashflows::<Monthly>::new(&flows);
         let sum: f64 = amounts.iter().sum();
         let npv = series
@@ -51,7 +51,7 @@ proptest! {
         low in 0.0f64..0.5,
         bump in 1e-3f64..0.5,
     ) {
-        let flows: Vec<Money> = amounts.iter().map(|&a| Money::new(a).unwrap()).collect();
+        let flows: Vec<Money> = amounts.iter().map(|&a| Money::agnostic(a).unwrap()).collect();
         let series = Cashflows::<Monthly>::new(&flows);
         let npv_low = series
             .net_present_value(Rate::<Monthly>::new(low).unwrap())
@@ -77,8 +77,8 @@ proptest! {
         // the (negative) initial outflow as r → ∞, so a root is guaranteed.
         let total: f64 = inflows.iter().sum();
         let outflow = total * fraction;
-        let mut flows = vec![Money::new(-outflow).unwrap()];
-        flows.extend(inflows.iter().map(|&a| Money::new(a).unwrap()));
+        let mut flows = vec![Money::agnostic(-outflow).unwrap()];
+        flows.extend(inflows.iter().map(|&a| Money::agnostic(a).unwrap()));
         let series = Cashflows::<Monthly>::new(&flows);
 
         let irr = series.internal_rate_of_return().unwrap();
@@ -96,7 +96,7 @@ proptest! {
     /// Exact, not approximate — IEEE negation only toggles the sign bit.
     #[test]
     fn negating_money_twice_is_the_identity(amount in -1e12f64..1e12) {
-        let money = Money::new(amount).unwrap();
+        let money = Money::agnostic(amount).unwrap();
         prop_assert_eq!(-(-money), money);
     }
 
@@ -107,7 +107,7 @@ proptest! {
         a in -1e12f64..1e12,
         b in -1e12f64..1e12,
     ) {
-        let (a, b) = (Money::new(a).unwrap(), Money::new(b).unwrap());
+        let (a, b) = (Money::agnostic(a).unwrap(), Money::agnostic(b).unwrap());
         prop_assert_eq!(a.try_sub(b).unwrap(), a.try_add(-b).unwrap());
     }
 
@@ -117,7 +117,7 @@ proptest! {
         amount in -1e9f64..1e9,
         factor in 0.01f64..100.0,
     ) {
-        let money = Money::new(amount).unwrap();
+        let money = Money::agnostic(amount).unwrap();
         let recovered = money.try_mul(factor).unwrap().try_div(factor).unwrap();
         prop_assert!(close(recovered.value(), amount, 1e-6 + 1e-12 * amount.abs()));
     }
@@ -137,7 +137,7 @@ proptest! {
 
         let rate = Rate::<Monthly>::new(rate).unwrap();
         let periods = Period::new(periods).unwrap();
-        let amount = Money::new(amount).unwrap();
+        let amount = Money::agnostic(amount).unwrap();
 
         let future = single_sum::future_value(rate, periods, amount).unwrap();
         let back = single_sum::present_value(rate, periods, future).unwrap();
@@ -159,7 +159,7 @@ proptest! {
         let rate = Rate::<Monthly>::new(rate).unwrap();
         // At least one period, so the amortisation is not degenerate.
         let periods = Period::new(periods).unwrap();
-        let payment = Money::new(payment).unwrap();
+        let payment = Money::agnostic(payment).unwrap();
 
         let present = annuity::present_value(rate, periods, payment).unwrap();
         let recovered = annuity::payment(rate, periods, present).unwrap();
@@ -178,7 +178,7 @@ proptest! {
 
         let rate = Rate::<Monthly>::new(rate).unwrap();
         let periods = Period::new(periods).unwrap();
-        let payment = Money::new(payment).unwrap();
+        let payment = Money::agnostic(payment).unwrap();
 
         let present = annuity::due::present_value(rate, periods, payment).unwrap();
         let recovered = annuity::due::payment(rate, periods, present).unwrap();
@@ -217,7 +217,7 @@ proptest! {
         use time_value::{single_sum, Period};
 
         let r = Rate::<Monthly>::new(rate).unwrap();
-        let present = Money::new(present).unwrap();
+        let present = Money::agnostic(present).unwrap();
         let n = Period::new(periods).unwrap();
 
         let future = single_sum::future_value(r, n, present).unwrap();
@@ -237,7 +237,7 @@ proptest! {
         use time_value::{single_sum, Period};
 
         let r = Rate::<Monthly>::new(rate).unwrap();
-        let present = Money::new(present).unwrap();
+        let present = Money::agnostic(present).unwrap();
         let n = Period::new(periods).unwrap();
 
         let future = single_sum::future_value(r, n, present).unwrap();
@@ -264,7 +264,7 @@ proptest! {
         use time_value::{annuity, Period};
 
         let r = Rate::<Monthly>::new(rate).unwrap();
-        let payment = Money::new(payment).unwrap();
+        let payment = Money::agnostic(payment).unwrap();
         let n = Period::new(periods).unwrap();
 
         let present = annuity::present_value(r, n, payment).unwrap();
@@ -284,7 +284,7 @@ proptest! {
         use time_value::{annuity, Period};
 
         let r = Rate::<Monthly>::new(rate).unwrap();
-        let payment = Money::new(payment).unwrap();
+        let payment = Money::agnostic(payment).unwrap();
         let n = Period::new(periods).unwrap();
 
         let present = annuity::present_value(r, n, payment).unwrap();
@@ -316,11 +316,11 @@ proptest! {
         let outflow = total * fraction; // strictly below the inflows, so a root exists
 
         let mut flows =
-            vec![DatedCashflow::new(0.0, Money::new(-outflow).unwrap()).unwrap()];
+            vec![DatedCashflow::new(0.0, Money::agnostic(-outflow).unwrap()).unwrap()];
         let mut t = 0.0;
         for (inflow, gap) in spec {
             t += gap;
-            flows.push(DatedCashflow::new(t, Money::new(inflow).unwrap()).unwrap());
+            flows.push(DatedCashflow::new(t, Money::agnostic(inflow).unwrap()).unwrap());
         }
         let series = DatedCashflows::new(&flows);
 

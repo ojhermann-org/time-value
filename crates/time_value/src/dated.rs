@@ -9,6 +9,7 @@
 //! (`docs/adr/0029-dated-cashflows-xnpv-xirr.md`).
 
 use crate::math::powf;
+use crate::money::combine;
 use crate::root::{self, abs};
 use crate::{Annual, Money, Rate, TvmError};
 
@@ -67,8 +68,8 @@ impl DatedCashflow {
 ///
 /// // Pay 100 now, receive 110 exactly one year later: a 10% annual return.
 /// let flows = [
-///     DatedCashflow::new(0.0, Money::new(-100.0)?)?,
-///     DatedCashflow::new(1.0, Money::new(110.0)?)?,
+///     DatedCashflow::new(0.0, Money::agnostic(-100.0)?)?,
+///     DatedCashflow::new(1.0, Money::agnostic(110.0)?)?,
 /// ];
 /// let dated = DatedCashflows::new(&flows);
 ///
@@ -82,7 +83,7 @@ impl DatedCashflow {
 /// ```compile_fail
 /// use time_value::{DatedCashflow, DatedCashflows, Money, Monthly, Rate};
 ///
-/// let flows = [DatedCashflow::new(0.0, Money::new(-100.0).unwrap()).unwrap()];
+/// let flows = [DatedCashflow::new(0.0, Money::agnostic(-100.0).unwrap()).unwrap()];
 /// let dated = DatedCashflows::new(&flows);
 /// let monthly = Rate::<Monthly>::new(0.01).unwrap();
 /// let _ = dated.net_present_value(monthly); // wrong periodicity — won't compile
@@ -117,16 +118,34 @@ impl<'a> DatedCashflows<'a> {
         self.flows.is_empty()
     }
 
+    /// The single [`Currency`](crate::Currency) the series is denominated in, by
+    /// the [`Currency::Xxx`](crate::Currency::Xxx) identity rule. An empty (or
+    /// wholly agnostic) series is `Xxx`.
+    ///
+    /// # Errors
+    ///
+    /// [`TvmError::CurrencyMismatch`] if the flows mix distinct non-`Xxx`
+    /// currencies (ADR-0034).
+    fn currency(self) -> Result<crate::Currency, TvmError> {
+        let mut acc = crate::Currency::Xxx;
+        for cf in self.flows {
+            acc = combine(acc, cf.amount.currency())?;
+        }
+        Ok(acc)
+    }
+
     /// The net present value of the dated series discounted at an annual `rate`
     /// (XNPV): `Σᵢ CFᵢ / (1 + r)^(tᵢ − t₀)`, with `tᵢ` the offset in years and
     /// `t₀` the first flow's offset. An **empty** series has value `0`.
     ///
     /// # Errors
     ///
+    /// [`TvmError::CurrencyMismatch`] if the flows mix distinct currencies, or
     /// [`TvmError::Overflow`] if the sum overflows to a non-finite value
     /// (ADR-0021).
     pub fn net_present_value(self, rate: Rate<Annual>) -> Result<Money, TvmError> {
-        Money::from_operation(self.xnpv_at(rate.value()))
+        let currency = self.currency()?;
+        Money::from_operation(self.xnpv_at(rate.value()), currency)
     }
 
     /// The internal rate of return of the dated series (XIRR): the annual
@@ -227,7 +246,7 @@ mod tests {
     }
 
     fn flow(offset_years: f64, amount: f64) -> DatedCashflow {
-        DatedCashflow::new(offset_years, Money::new(amount).unwrap()).unwrap()
+        DatedCashflow::new(offset_years, Money::agnostic(amount).unwrap()).unwrap()
     }
 
     fn annual(rate: f64) -> Rate<Annual> {
@@ -349,11 +368,11 @@ mod tests {
     #[test]
     fn non_finite_offset_is_rejected() {
         assert_eq!(
-            DatedCashflow::new(f64::INFINITY, Money::new(1.0).unwrap()),
+            DatedCashflow::new(f64::INFINITY, Money::agnostic(1.0).unwrap()),
             Err(TvmError::NonFiniteOffset)
         );
         assert_eq!(
-            DatedCashflow::new(f64::NAN, Money::new(1.0).unwrap()),
+            DatedCashflow::new(f64::NAN, Money::agnostic(1.0).unwrap()),
             Err(TvmError::NonFiniteOffset)
         );
     }
@@ -362,7 +381,7 @@ mod tests {
     fn accessors_round_trip() {
         let cf = flow(1.5, -42.0);
         assert!(approx(cf.offset_years(), 1.5));
-        assert_eq!(cf.amount(), Money::new(-42.0).unwrap());
+        assert_eq!(cf.amount(), Money::agnostic(-42.0).unwrap());
 
         let flows = [cf];
         let series = DatedCashflows::new(&flows);

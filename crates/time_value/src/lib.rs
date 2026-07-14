@@ -12,9 +12,12 @@
 //!
 //! ## Model
 //!
-//! - [`Money`] is a validated monetary amount — always finite, because every
-//!   operation that could overflow returns a `Result` instead; cashflows are
-//!   signed (outflow negative, inflow positive).
+//! - [`Money`] is a validated monetary amount — an `f64` magnitude plus the
+//!   [`Currency`] it is denominated in — always finite, because every operation
+//!   that could overflow returns a `Result` instead; cashflows are signed (outflow
+//!   negative, inflow positive). Currency is a *runtime value*, not a type tag
+//!   ([`Currency::Xxx`] is the agnostic identity); a mismatch is a runtime
+//!   [`TvmError::CurrencyMismatch`].
 //! - [`Rate<P>`] is a per-period interest rate tagged with a [`Periodicity`]
 //!   marker (`P` — e.g. [`Monthly`], [`Annual`]). The tag is zero-sized.
 //! - [`Cashflows<P>`] is a periodicity-tagged series of cashflows at consecutive
@@ -47,7 +50,8 @@
 //! use time_value::{Cashflows, Money, Monthly, Rate};
 //!
 //! // A project: pay 100 now, receive 60 next month and 60 the month after.
-//! let flows = [Money::new(-100.0)?, Money::new(60.0)?, Money::new(60.0)?];
+//! // Pure-number TVM is currency-agnostic (`Money::agnostic`).
+//! let flows = [Money::agnostic(-100.0)?, Money::agnostic(60.0)?, Money::agnostic(60.0)?];
 //! let project = Cashflows::<Monthly>::new(&flows);
 //!
 //! let npv = project.net_present_value(Rate::<Monthly>::new(0.01)?)?;
@@ -71,13 +75,15 @@
 
 pub mod amortization;
 mod cashflows;
+mod currency;
 mod money;
 mod periodicity;
 mod rate;
 mod root;
 
 pub use cashflows::Cashflows;
-pub use money::Money;
+pub use currency::Currency;
+pub use money::{FxRate, Money};
 pub use periodicity::{Annual, Daily, Monthly, Periodicity, Quarterly, SemiAnnual, Weekly};
 pub use rate::Rate;
 
@@ -113,6 +119,16 @@ pub enum TvmError {
     /// infinity). For a non-finite value *produced by an operation*, see
     /// [`Overflow`](Self::Overflow) and [`Undefined`](Self::Undefined).
     NonFiniteAmount,
+    /// An arithmetic or TVM operation combined two amounts denominated in distinct
+    /// non-[`Xxx`](Currency::Xxx) currencies. An agnostic [`Xxx`](Currency::Xxx)
+    /// amount adopts the currency it is combined with, but two different real
+    /// currencies cannot be added, subtracted, or discounted together
+    /// (`docs/adr/0034-money-and-currency.md`).
+    CurrencyMismatch,
+    /// An exchange rate supplied to [`FxRate::new`](crate::FxRate::new) was not
+    /// finite or was not strictly positive; a non-positive price has no economic
+    /// meaning (ADR-0034).
+    InvalidExchangeRate,
     /// An operation's `f64` arithmetic overflowed the finite range — a genuine
     /// result exists mathematically but is too large to represent, so it became an
     /// infinity or `NaN` (e.g. compounding an enormous rate over a long horizon).
@@ -163,6 +179,12 @@ impl fmt::Display for TvmError {
                 f.write_str("rate must be finite and greater than -1.0 (-100%)")
             }
             Self::NonFiniteAmount => f.write_str("monetary amount must be finite"),
+            Self::CurrencyMismatch => {
+                f.write_str("amounts are in distinct currencies and cannot be combined")
+            }
+            Self::InvalidExchangeRate => {
+                f.write_str("exchange rate must be finite and greater than zero")
+            }
             Self::Overflow => f.write_str("operation overflowed the finite range"),
             Self::Undefined => f.write_str("operation is undefined for these inputs"),
             Self::NegativePeriods => f.write_str("period count must be finite and non-negative"),

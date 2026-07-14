@@ -62,7 +62,7 @@ fn future_value_factor(rate: f64, periods: f64) -> f64 {
 /// let pv = annuity::present_value(
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
-///     Money::new(100.0)?,
+///     Money::agnostic(100.0)?,
 /// )?;
 /// assert!((pv.value() - 1125.508).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
@@ -77,7 +77,10 @@ pub fn present_value<P: Periodicity>(
     periods: Period,
     payment: Money,
 ) -> Result<Money, TvmError> {
-    Money::from_operation(payment.value() * present_value_factor(rate.value(), periods.value()))
+    Money::from_operation(
+        payment.value() * present_value_factor(rate.value(), periods.value()),
+        payment.currency(),
+    )
 }
 
 /// The future value of an ordinary annuity that pays `payment` at the end of
@@ -93,7 +96,7 @@ pub fn present_value<P: Periodicity>(
 /// let fv = annuity::future_value(
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
-///     Money::new(100.0)?,
+///     Money::agnostic(100.0)?,
 /// )?;
 /// assert!((fv.value() - 1268.250).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
@@ -108,7 +111,10 @@ pub fn future_value<P: Periodicity>(
     periods: Period,
     payment: Money,
 ) -> Result<Money, TvmError> {
-    Money::from_operation(payment.value() * future_value_factor(rate.value(), periods.value()))
+    Money::from_operation(
+        payment.value() * future_value_factor(rate.value(), periods.value()),
+        payment.currency(),
+    )
 }
 
 /// The level payment that amortises a `present` value over `periods` periods at
@@ -125,7 +131,7 @@ pub fn future_value<P: Periodicity>(
 /// let pmt = annuity::payment(
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
-///     Money::new(1125.508)?,
+///     Money::agnostic(1125.508)?,
 /// )?;
 /// assert!((pmt.value() - 100.0).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
@@ -148,7 +154,7 @@ pub fn payment<P: Periodicity>(
         return Err(TvmError::Undefined);
     }
     let factor = present_value_factor(rate.value(), periods.value());
-    Money::from_operation(present.value() / factor)
+    Money::from_operation(present.value() / factor, present.currency())
 }
 
 /// The present value of a **level perpetuity** — a `payment` at the end of every
@@ -164,7 +170,7 @@ pub fn payment<P: Periodicity>(
 /// use time_value::{annuity, Money, Monthly, Rate};
 ///
 /// // 100 at the end of every month, forever, discounted at 5% per month.
-/// let pv = annuity::perpetuity(Rate::<Monthly>::new(0.05)?, Money::new(100.0)?)?;
+/// let pv = annuity::perpetuity(Rate::<Monthly>::new(0.05)?, Money::agnostic(100.0)?)?;
 /// assert!((pv.value() - 2000.0).abs() < 1e-9);
 /// # Ok::<(), time_value::TvmError>(())
 /// ```
@@ -197,7 +203,7 @@ pub fn perpetuity<P: Periodicity>(rate: Rate<P>, payment: Money) -> Result<Money
 /// let pv = annuity::growing_perpetuity(
 ///     Rate::<Monthly>::new(0.05)?,
 ///     Rate::<Monthly>::new(0.02)?,
-///     Money::new(100.0)?,
+///     Money::agnostic(100.0)?,
 /// )?;
 /// assert!((pv.value() - 3333.333).abs() < 1e-3); // 100 / (0.05 - 0.02)
 /// # Ok::<(), time_value::TvmError>(())
@@ -216,7 +222,10 @@ pub fn growing_perpetuity<P: Periodicity>(
     if rate.value() <= growth.value() {
         return Err(TvmError::DivergentPerpetuity);
     }
-    Money::from_operation(payment.value() / (rate.value() - growth.value()))
+    Money::from_operation(
+        payment.value() / (rate.value() - growth.value()),
+        payment.currency(),
+    )
 }
 
 /// The number of level `payment`s that amortise a `present` value at `rate` —
@@ -232,8 +241,8 @@ pub fn growing_perpetuity<P: Periodicity>(
 /// // How many 100/month payments retire a 1125.508 loan at 1%/month? A year.
 /// let n = annuity::periods(
 ///     Rate::<Monthly>::new(0.01)?,
-///     Money::new(100.0)?,
-///     Money::new(1125.508)?,
+///     Money::agnostic(100.0)?,
+///     Money::agnostic(1125.508)?,
 /// )?;
 /// assert!((n.value() - 12.0).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
@@ -283,8 +292,8 @@ pub fn periods<P: Periodicity>(
 /// // How many 100/month contributions reach ~1268.25 at 1%/month? A year.
 /// let n = annuity::periods_from_future(
 ///     Rate::<Monthly>::new(0.01)?,
-///     Money::new(100.0)?,
-///     Money::new(1268.250)?,
+///     Money::agnostic(100.0)?,
+///     Money::agnostic(1268.250)?,
 /// )?;
 /// assert!((n.value() - 12.0).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
@@ -333,8 +342,8 @@ pub fn periods_from_future<P: Periodicity>(
 /// // What monthly rate amortises 1125.508 with 12 payments of 100? About 1%.
 /// let r = annuity::rate::<Monthly>(
 ///     Period::new(12.0)?,
-///     Money::new(100.0)?,
-///     Money::new(1125.508)?,
+///     Money::agnostic(100.0)?,
+///     Money::agnostic(1125.508)?,
 /// )?;
 /// assert!((r.value() - 0.01).abs() < 1e-4);
 /// # Ok::<(), time_value::TvmError>(())
@@ -375,8 +384,8 @@ pub fn rate<P: Periodicity>(
 /// // What monthly rate accumulates 12 payments of 100 to ~1268.25? About 1%.
 /// let r = annuity::rate_from_future::<Monthly>(
 ///     Period::new(12.0)?,
-///     Money::new(100.0)?,
-///     Money::new(1268.250)?,
+///     Money::agnostic(100.0)?,
+///     Money::agnostic(1268.250)?,
 /// )?;
 /// assert!((r.value() - 0.01).abs() < 1e-4);
 /// # Ok::<(), time_value::TvmError>(())
@@ -444,7 +453,7 @@ pub mod due {
     /// let pv = annuity::due::present_value(
     ///     Rate::<Monthly>::new(0.01)?,
     ///     Period::new(12.0)?,
-    ///     Money::new(100.0)?,
+    ///     Money::agnostic(100.0)?,
     /// )?;
     /// assert!((pv.value() - 1136.763).abs() < 1e-2); // ordinary 1125.508 × 1.01
     /// # Ok::<(), time_value::TvmError>(())
@@ -460,7 +469,7 @@ pub mod due {
         payment: Money,
     ) -> Result<Money, TvmError> {
         let factor = present_value_factor(rate.value(), periods.value()) * (1.0 + rate.value());
-        Money::from_operation(payment.value() * factor)
+        Money::from_operation(payment.value() * factor, payment.currency())
     }
 
     /// The future value of an annuity-due that pays `payment` at the *start* of
@@ -476,7 +485,7 @@ pub mod due {
     /// let fv = annuity::due::future_value(
     ///     Rate::<Monthly>::new(0.01)?,
     ///     Period::new(12.0)?,
-    ///     Money::new(100.0)?,
+    ///     Money::agnostic(100.0)?,
     /// )?;
     /// assert!((fv.value() - 1280.933).abs() < 1e-2); // ordinary 1268.250 × 1.01
     /// # Ok::<(), time_value::TvmError>(())
@@ -492,7 +501,7 @@ pub mod due {
         payment: Money,
     ) -> Result<Money, TvmError> {
         let factor = future_value_factor(rate.value(), periods.value()) * (1.0 + rate.value());
-        Money::from_operation(payment.value() * factor)
+        Money::from_operation(payment.value() * factor, payment.currency())
     }
 
     /// The level payment, made at the *start* of each period, that amortises a
@@ -512,7 +521,7 @@ pub mod due {
     /// let pmt = annuity::due::payment(
     ///     Rate::<Monthly>::new(0.01)?,
     ///     Period::new(12.0)?,
-    ///     Money::new(1136.763)?,
+    ///     Money::agnostic(1136.763)?,
     /// )?;
     /// assert!((pmt.value() - 100.0).abs() < 1e-2);
     /// # Ok::<(), time_value::TvmError>(())
@@ -533,7 +542,7 @@ pub mod due {
             return Err(TvmError::Undefined);
         }
         let factor = present_value_factor(rate.value(), periods.value()) * (1.0 + rate.value());
-        Money::from_operation(present.value() / factor)
+        Money::from_operation(present.value() / factor, present.currency())
     }
 }
 
@@ -556,7 +565,7 @@ mod tests {
         let pv = annuity::present_value(
             rate(0.01),
             Period::new(12.0).unwrap(),
-            Money::new(100.0).unwrap(),
+            Money::agnostic(100.0).unwrap(),
         )
         .unwrap();
         assert!(approx(pv.value(), 1125.508, 1e-2));
@@ -564,7 +573,7 @@ mod tests {
 
     #[test]
     fn payment_inverts_present_value() {
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let periods = Period::new(24.0).unwrap();
         let pv = annuity::present_value(rate(0.015), periods, payment).unwrap();
         let recovered = annuity::payment(rate(0.015), periods, pv).unwrap();
@@ -574,8 +583,10 @@ mod tests {
     #[test]
     fn future_value_is_present_value_compounded() {
         let periods = Period::new(12.0).unwrap();
-        let pv = annuity::present_value(rate(0.01), periods, Money::new(100.0).unwrap()).unwrap();
-        let fv = annuity::future_value(rate(0.01), periods, Money::new(100.0).unwrap()).unwrap();
+        let pv =
+            annuity::present_value(rate(0.01), periods, Money::agnostic(100.0).unwrap()).unwrap();
+        let fv =
+            annuity::future_value(rate(0.01), periods, Money::agnostic(100.0).unwrap()).unwrap();
         // FV = PV * (1 + r)^n; compound manually to avoid needing powf here.
         let mut growth = 1.0;
         for _ in 0..12 {
@@ -587,7 +598,7 @@ mod tests {
     #[test]
     fn zero_rate_uses_the_limit() {
         let periods = Period::new(10.0).unwrap();
-        let payment = Money::new(50.0).unwrap();
+        let payment = Money::agnostic(50.0).unwrap();
         // At r = 0 both factors are n, so PV = FV = payment * n.
         assert!(approx(
             annuity::present_value(rate(0.0), periods, payment)
@@ -607,14 +618,14 @@ mod tests {
 
     #[test]
     fn payment_over_zero_periods_is_degenerate() {
-        let result = annuity::payment(rate(0.01), Period::ZERO, Money::new(1000.0).unwrap());
+        let result = annuity::payment(rate(0.01), Period::ZERO, Money::agnostic(1000.0).unwrap());
         assert_eq!(result, Err(TvmError::Undefined));
     }
 
     #[test]
     fn due_present_value_is_ordinary_scaled_by_one_plus_r() {
         let periods = Period::new(12.0).unwrap();
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let ordinary = annuity::present_value(rate(0.01), periods, payment).unwrap();
         let due = annuity::due::present_value(rate(0.01), periods, payment).unwrap();
         assert!(approx(due.value(), ordinary.value() * 1.01, 1e-9));
@@ -623,7 +634,7 @@ mod tests {
     #[test]
     fn due_future_value_is_ordinary_scaled_by_one_plus_r() {
         let periods = Period::new(12.0).unwrap();
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let ordinary = annuity::future_value(rate(0.01), periods, payment).unwrap();
         let due = annuity::due::future_value(rate(0.01), periods, payment).unwrap();
         assert!(approx(due.value(), ordinary.value() * 1.01, 1e-9));
@@ -631,7 +642,7 @@ mod tests {
 
     #[test]
     fn due_payment_inverts_due_present_value() {
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let periods = Period::new(24.0).unwrap();
         let pv = annuity::due::present_value(rate(0.015), periods, payment).unwrap();
         let recovered = annuity::due::payment(rate(0.015), periods, pv).unwrap();
@@ -642,7 +653,7 @@ mod tests {
     fn due_zero_rate_matches_ordinary_limit() {
         // At r = 0 the (1 + r) scaling is 1, so due == ordinary == payment * n.
         let periods = Period::new(10.0).unwrap();
-        let payment = Money::new(50.0).unwrap();
+        let payment = Money::agnostic(50.0).unwrap();
         assert!(approx(
             annuity::due::present_value(rate(0.0), periods, payment)
                 .unwrap()
@@ -661,35 +672,38 @@ mod tests {
 
     #[test]
     fn due_payment_over_zero_periods_is_degenerate() {
-        let result = annuity::due::payment(rate(0.01), Period::ZERO, Money::new(1000.0).unwrap());
+        let result =
+            annuity::due::payment(rate(0.01), Period::ZERO, Money::agnostic(1000.0).unwrap());
         assert_eq!(result, Err(TvmError::Undefined));
     }
 
     #[test]
     fn perpetuity_is_payment_over_rate() {
-        let pv = annuity::perpetuity(rate(0.05), Money::new(100.0).unwrap()).unwrap();
+        let pv = annuity::perpetuity(rate(0.05), Money::agnostic(100.0).unwrap()).unwrap();
         assert!(approx(pv.value(), 2000.0, 1e-9));
     }
 
     #[test]
     fn perpetuity_is_the_zero_growth_growing_perpetuity() {
-        let pv = annuity::perpetuity(rate(0.05), Money::new(100.0).unwrap()).unwrap();
+        let pv = annuity::perpetuity(rate(0.05), Money::agnostic(100.0).unwrap()).unwrap();
         let grown =
-            annuity::growing_perpetuity(rate(0.05), rate(0.0), Money::new(100.0).unwrap()).unwrap();
+            annuity::growing_perpetuity(rate(0.05), rate(0.0), Money::agnostic(100.0).unwrap())
+                .unwrap();
         assert!(approx(pv.value(), grown.value(), 1e-9));
     }
 
     #[test]
     fn growing_perpetuity_discounts_by_the_spread() {
         // 100 / (0.05 - 0.02) = 3333.333...
-        let pv = annuity::growing_perpetuity(rate(0.05), rate(0.02), Money::new(100.0).unwrap())
-            .unwrap();
+        let pv =
+            annuity::growing_perpetuity(rate(0.05), rate(0.02), Money::agnostic(100.0).unwrap())
+                .unwrap();
         assert!(approx(pv.value(), 3_333.333_333_333_333, 1e-6));
     }
 
     #[test]
     fn perpetuity_with_non_positive_rate_diverges() {
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         assert_eq!(
             annuity::perpetuity(rate(0.0), payment),
             Err(TvmError::DivergentPerpetuity),
@@ -702,7 +716,7 @@ mod tests {
 
     #[test]
     fn growing_perpetuity_diverges_when_rate_does_not_exceed_growth() {
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         // r = g: an infinity from division by zero.
         assert_eq!(
             annuity::growing_perpetuity(rate(0.03), rate(0.03), payment),
@@ -718,7 +732,7 @@ mod tests {
     #[test]
     fn periods_inverts_present_value() {
         let periods = Period::new(12.0).unwrap();
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let present = annuity::present_value(rate(0.01), periods, payment).unwrap();
         let recovered = annuity::periods(rate(0.01), payment, present).unwrap();
         assert!(approx(recovered.value(), periods.value(), 1e-6));
@@ -727,7 +741,7 @@ mod tests {
     #[test]
     fn periods_from_future_inverts_future_value() {
         let periods = Period::new(12.0).unwrap();
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let future = annuity::future_value(rate(0.01), periods, payment).unwrap();
         let recovered = annuity::periods_from_future(rate(0.01), payment, future).unwrap();
         assert!(approx(recovered.value(), periods.value(), 1e-6));
@@ -738,8 +752,8 @@ mod tests {
         // At r = 0, PV = PMT·n, so n = PV / PMT.
         let n = annuity::periods(
             rate(0.0),
-            Money::new(100.0).unwrap(),
-            Money::new(1200.0).unwrap(),
+            Money::agnostic(100.0).unwrap(),
+            Money::agnostic(1200.0).unwrap(),
         )
         .unwrap();
         assert!(approx(n.value(), 12.0, 1e-9));
@@ -752,8 +766,8 @@ mod tests {
         assert_eq!(
             annuity::periods(
                 rate(0.05),
-                Money::new(100.0).unwrap(),
-                Money::new(10_000.0).unwrap(),
+                Money::agnostic(100.0).unwrap(),
+                Money::agnostic(10_000.0).unwrap(),
             ),
             Err(TvmError::Undefined)
         );
@@ -762,7 +776,7 @@ mod tests {
     #[test]
     fn rate_inverts_present_value() {
         let periods = Period::new(12.0).unwrap();
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let present = annuity::present_value(rate(0.01), periods, payment).unwrap();
         let recovered = annuity::rate::<Monthly>(periods, payment, present).unwrap();
         assert!(approx(recovered.value(), 0.01, 1e-6));
@@ -771,7 +785,7 @@ mod tests {
     #[test]
     fn rate_from_future_inverts_future_value() {
         let periods = Period::new(12.0).unwrap();
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let future = annuity::future_value(rate(0.01), periods, payment).unwrap();
         let recovered = annuity::rate_from_future::<Monthly>(periods, payment, future).unwrap();
         assert!(approx(recovered.value(), 0.01, 1e-6));
@@ -781,7 +795,7 @@ mod tests {
     fn rate_recovers_a_negative_rate() {
         // A payment stream can price above PMT·n only at a negative rate.
         let periods = Period::new(12.0).unwrap();
-        let payment = Money::new(100.0).unwrap();
+        let payment = Money::agnostic(100.0).unwrap();
         let present = annuity::present_value(rate(-0.02), periods, payment).unwrap();
         let recovered = annuity::rate::<Monthly>(periods, payment, present).unwrap();
         assert!(approx(recovered.value(), -0.02, 1e-6));
@@ -794,8 +808,8 @@ mod tests {
         assert_eq!(
             annuity::rate::<Monthly>(
                 Period::new(12.0).unwrap(),
-                Money::new(100.0).unwrap(),
-                Money::new(-1000.0).unwrap(),
+                Money::agnostic(100.0).unwrap(),
+                Money::agnostic(-1000.0).unwrap(),
             ),
             Err(TvmError::SolveDidNotConverge)
         );

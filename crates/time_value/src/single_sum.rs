@@ -23,7 +23,7 @@ use crate::{Money, Period, Periodicity, Rate, TvmError};
 /// let pv = single_sum::present_value(
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
-///     Money::new(1000.0)?,
+///     Money::agnostic(1000.0)?,
 /// )?;
 /// assert!((pv.value() - 887.449).abs() < 1e-3);
 /// # Ok::<(), time_value::TvmError>(())
@@ -40,7 +40,7 @@ pub fn present_value<P: Periodicity>(
     future: Money,
 ) -> Result<Money, TvmError> {
     let growth = powf(1.0 + rate.value(), periods.value());
-    Money::from_operation(future.value() / growth)
+    Money::from_operation(future.value() / growth, future.currency())
 }
 
 /// The future value of a single `present` amount after `periods` periods,
@@ -58,7 +58,7 @@ pub fn present_value<P: Periodicity>(
 /// let fv = single_sum::future_value(
 ///     Rate::<Monthly>::new(0.01)?,
 ///     Period::new(12.0)?,
-///     Money::new(1000.0)?,
+///     Money::agnostic(1000.0)?,
 /// )?;
 /// assert!((fv.value() - 1126.825).abs() < 1e-3);
 /// # Ok::<(), time_value::TvmError>(())
@@ -75,7 +75,7 @@ pub fn future_value<P: Periodicity>(
     present: Money,
 ) -> Result<Money, TvmError> {
     let growth = powf(1.0 + rate.value(), periods.value());
-    Money::from_operation(present.value() * growth)
+    Money::from_operation(present.value() * growth, present.currency())
 }
 
 /// The number of periods for a single `present` amount to grow to `future` at
@@ -93,8 +93,8 @@ pub fn future_value<P: Periodicity>(
 /// // How long for 1000 to reach ~1126.83 at 1% per month? A year.
 /// let n = single_sum::periods(
 ///     Rate::<Monthly>::new(0.01)?,
-///     Money::new(1000.0)?,
-///     Money::new(1126.825)?,
+///     Money::agnostic(1000.0)?,
+///     Money::agnostic(1126.825)?,
 /// )?;
 /// assert!((n.value() - 12.0).abs() < 1e-2);
 /// # Ok::<(), time_value::TvmError>(())
@@ -136,8 +136,8 @@ pub fn periods<P: Periodicity>(
 /// // What monthly rate grows 1000 to ~1126.83 over a year? About 1%.
 /// let r = single_sum::rate::<Monthly>(
 ///     Period::new(12.0)?,
-///     Money::new(1000.0)?,
-///     Money::new(1126.825)?,
+///     Money::agnostic(1000.0)?,
+///     Money::agnostic(1126.825)?,
 /// )?;
 /// assert!((r.value() - 0.01).abs() < 1e-4);
 /// # Ok::<(), time_value::TvmError>(())
@@ -178,7 +178,7 @@ mod tests {
         (
             Rate::<Monthly>::new(0.01).unwrap(),
             Period::new(12.0).unwrap(),
-            Money::new(1000.0).unwrap(),
+            Money::agnostic(1000.0).unwrap(),
         )
     }
 
@@ -229,7 +229,7 @@ mod tests {
         // a silent `inf` (ADR-0021).
         let rate = Rate::<Monthly>::new(1.0).unwrap(); // 100% per period
         let periods = Period::new(2000.0).unwrap();
-        let amount = Money::new(1e6).unwrap();
+        let amount = Money::agnostic(1e6).unwrap();
         assert_eq!(future_value(rate, periods, amount), Err(TvmError::Overflow));
     }
 
@@ -256,8 +256,8 @@ mod tests {
         assert_eq!(
             periods(
                 rate,
-                Money::new(1000.0).unwrap(),
-                Money::new(2000.0).unwrap()
+                Money::agnostic(1000.0).unwrap(),
+                Money::agnostic(2000.0).unwrap()
             ),
             Err(TvmError::Undefined)
         );
@@ -270,8 +270,8 @@ mod tests {
         assert_eq!(
             periods(
                 rate,
-                Money::new(1000.0).unwrap(),
-                Money::new(500.0).unwrap()
+                Money::agnostic(1000.0).unwrap(),
+                Money::agnostic(500.0).unwrap()
             ),
             Err(TvmError::NegativePeriods)
         );
@@ -282,8 +282,8 @@ mod tests {
         assert_eq!(
             solve_rate::<Monthly>(
                 Period::ZERO,
-                Money::new(1000.0).unwrap(),
-                Money::new(2000.0).unwrap(),
+                Money::agnostic(1000.0).unwrap(),
+                Money::agnostic(2000.0).unwrap(),
             ),
             Err(TvmError::Undefined)
         );

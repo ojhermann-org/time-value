@@ -13,7 +13,8 @@
 
 use core::marker::PhantomData;
 
-use crate::{Money, Periodicity, Rate, TvmError};
+use crate::money::combine;
+use crate::{Currency, Money, Periodicity, Rate, TvmError};
 
 /// Relative slack on the "this payment closes the loan" test, so the
 /// floating-point residual of a *computed* level payment still lands the final
@@ -49,6 +50,9 @@ pub struct Schedule<P: Periodicity> {
     balance: f64,
     rate: f64,
     payment: f64,
+    /// The currency every installment is denominated in — the shared currency of
+    /// the `principal` and `payment` the schedule was built from (ADR-0034).
+    currency: Currency,
     period: u32,
     marker: PhantomData<P>,
 }
@@ -68,8 +72,8 @@ impl<P: Periodicity> Schedule<P> {
     /// // Repay 1000 at 10%/period, paying 500 each period.
     /// let mut schedule = Schedule::with_payment(
     ///     Rate::<Monthly>::new(0.10)?,
-    ///     Money::new(500.0)?,
-    ///     Money::new(1000.0)?,
+    ///     Money::agnostic(500.0)?,
+    ///     Money::agnostic(1000.0)?,
     /// )?;
     ///
     /// let first = schedule.next().unwrap();
@@ -96,6 +100,7 @@ impl<P: Periodicity> Schedule<P> {
             balance: principal.value(),
             rate: rate.value(),
             payment: payment.value(),
+            currency: combine(principal.currency(), payment.currency())?,
             period: 0,
             marker: PhantomData,
         })
@@ -119,7 +124,7 @@ impl<P: Periodicity> Schedule<P> {
     /// let schedule = Schedule::for_term(
     ///     Rate::<Monthly>::new(0.01)?,
     ///     Period::new(12.0)?,
-    ///     Money::new(1125.508)?,
+    ///     Money::agnostic(1125.508)?,
     /// )?;
     /// assert_eq!(schedule.count(), 12);
     /// # Ok::<(), time_value::TvmError>(())
@@ -162,10 +167,10 @@ impl<P: Periodicity> Iterator for Schedule<P> {
         self.balance = balance;
         Some(Installment {
             period: self.period,
-            payment: Money::from_operation(payment).ok()?,
-            interest: Money::from_operation(interest).ok()?,
-            principal: Money::from_operation(principal).ok()?,
-            balance: Money::from_operation(balance).ok()?,
+            payment: Money::from_operation(payment, self.currency).ok()?,
+            interest: Money::from_operation(interest, self.currency).ok()?,
+            principal: Money::from_operation(principal, self.currency).ok()?,
+            balance: Money::from_operation(balance, self.currency).ok()?,
         })
     }
 }
@@ -189,8 +194,8 @@ mod tests {
         // 1000 at 10%, paying 500: 400/600, then 440/160, then a 176 stub.
         let mut schedule = Schedule::with_payment(
             rate(0.10),
-            Money::new(500.0).unwrap(),
-            Money::new(1000.0).unwrap(),
+            Money::agnostic(500.0).unwrap(),
+            Money::agnostic(1000.0).unwrap(),
         )
         .unwrap();
 
@@ -219,8 +224,8 @@ mod tests {
     fn interest_plus_principal_equals_each_payment() {
         let schedule = Schedule::with_payment(
             rate(0.05),
-            Money::new(300.0).unwrap(),
-            Money::new(2000.0).unwrap(),
+            Money::agnostic(300.0).unwrap(),
+            Money::agnostic(2000.0).unwrap(),
         )
         .unwrap();
         for installment in schedule {
@@ -238,8 +243,8 @@ mod tests {
         assert_eq!(
             Schedule::with_payment(
                 rate(0.10),
-                Money::new(100.0).unwrap(),
-                Money::new(1000.0).unwrap()
+                Money::agnostic(100.0).unwrap(),
+                Money::agnostic(1000.0).unwrap()
             )
             .map(Schedule::count),
             Err(TvmError::Undefined),
@@ -249,7 +254,8 @@ mod tests {
     #[test]
     fn a_non_positive_principal_is_an_empty_schedule() {
         let mut schedule =
-            Schedule::with_payment(rate(0.10), Money::new(100.0).unwrap(), Money::ZERO).unwrap();
+            Schedule::with_payment(rate(0.10), Money::agnostic(100.0).unwrap(), Money::ZERO)
+                .unwrap();
         assert!(schedule.next().is_none());
     }
 
@@ -260,7 +266,7 @@ mod tests {
 
         #[test]
         fn runs_exactly_the_term_and_clears_the_balance() {
-            let principal = Money::new(1125.508).unwrap();
+            let principal = Money::agnostic(1125.508).unwrap();
             let schedule =
                 Schedule::for_term(rate(0.01), Period::new(12.0).unwrap(), principal).unwrap();
 
@@ -282,7 +288,7 @@ mod tests {
         #[test]
         fn zero_term_is_degenerate() {
             assert_eq!(
-                Schedule::for_term(rate(0.01), Period::ZERO, Money::new(1000.0).unwrap())
+                Schedule::for_term(rate(0.01), Period::ZERO, Money::agnostic(1000.0).unwrap())
                     .map(Schedule::count),
                 Err(crate::TvmError::Undefined),
             );

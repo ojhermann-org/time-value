@@ -32,3 +32,18 @@ pub(crate) fn ln(x: f64) -> f64 {
 pub(crate) fn ln(x: f64) -> f64 {
     libm::log(x)
 }
+
+/// `x` rounded to the nearest integer (half away from zero), via `std`.
+#[cfg(feature = "std")]
+#[inline]
+pub(crate) fn round(x: f64) -> f64 {
+    x.round()
+}
+
+/// `x` rounded to the nearest integer (half away from zero), via `libm` (for
+/// `no_std` builds).
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+#[inline]
+pub(crate) fn round(x: f64) -> f64 {
+    libm::round(x)
+}
