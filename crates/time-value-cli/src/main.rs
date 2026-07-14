@@ -10,13 +10,16 @@
 //! takes a periodicity), and `amortize` (a schedule). `--rate` is a per-period
 //! rate (annual for the dated `series xnpv`/`xirr`); cashflows are positional.
 //! Most results print as a plain number, or as JSON with `--json`; `amortize`
-//! prints a table, or a JSON array of row objects under `--json`.
+//! prints a table, or a JSON array of row objects under `--json`. A global
+//! `--currency <CODE>` flag (default `XXX`, currency-agnostic) denominates every
+//! amount in an ISO 4217 currency; a non-`XXX` code is echoed alongside monetary
+//! results (`docs/adr/0034-money-and-currency.md`, ADR-0037).
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use time_value::{
-    amortization, annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money,
-    Monthly, Period, Rate,
+    amortization, annuity, single_sum, Annual, Cashflows, Currency, DatedCashflow, DatedCashflows,
+    Money, Monthly, Period, Rate,
 };
 use time_value_daycount::{act365_year_fraction, iso_to_day};
 
@@ -27,6 +30,12 @@ struct Cli {
     /// Print the result as a one-field JSON object instead of a plain number.
     #[arg(long, global = true)]
     json: bool,
+
+    /// Denominate all monetary amounts in this ISO 4217 currency (e.g. `USD`,
+    /// `JPY`). Defaults to `XXX` (currency-agnostic), preserving plain-number
+    /// output; a non-`XXX` currency is echoed alongside monetary results.
+    #[arg(long, global = true, default_value = "XXX", value_parser = parse_currency)]
+    currency: Currency,
 
     #[command(subcommand)]
     command: Command,
@@ -397,6 +406,39 @@ macro_rules! dispatch_periodicity {
     }};
 }
 
+/// clap `value_parser` for `--currency`: resolves an ISO 4217 code to a
+/// [`Currency`], rejecting anything not in the canonical set.
+fn parse_currency(code: &str) -> Result<Currency, String> {
+    Currency::from_code(code).ok_or_else(|| format!("unknown ISO 4217 currency code `{code}`"))
+}
+
+/// A scalar result: its label, numeric value, and — for *monetary* results — the
+/// [`Currency`] it is denominated in, so a non-`XXX` currency can be echoed. Rate
+/// and period results carry no currency (`None`).
+struct Scalar {
+    label: &'static str,
+    value: f64,
+    currency: Option<Currency>,
+}
+
+/// A monetary result — carries its currency so a non-`XXX` code is echoed.
+fn money_out(label: &'static str, amount: Money) -> Scalar {
+    Scalar {
+        label,
+        value: amount.value(),
+        currency: Some(amount.currency()),
+    }
+}
+
+/// A non-monetary result (a rate or a period count) — never carries a currency.
+fn plain_out(label: &'static str, value: f64) -> Scalar {
+    Scalar {
+        label,
+        value,
+        currency: None,
+    }
+}
+
 fn rate(value: f64) -> Result<Rate<Per>> {
     Rate::new(value).context("invalid rate (must be finite and greater than -100%)")
 }
@@ -409,12 +451,12 @@ fn period(value: f64) -> Result<Period<Per>> {
     Period::new(value).context("invalid period count (must be finite and non-negative)")
 }
 
-fn money(value: f64) -> Result<Money> {
-    Money::agnostic(value).context("invalid amount (must be finite)")
+fn money(value: f64, currency: Currency) -> Result<Money> {
+    Money::new(value, currency).context("invalid amount (must be finite)")
 }
 
-fn cashflows(values: &[f64]) -> Result<Vec<Money>> {
-    values.iter().copied().map(money).collect()
+fn cashflows(values: &[f64], currency: Currency) -> Result<Vec<Money>> {
+    values.iter().copied().map(|v| money(v, currency)).collect()
 }
 
 /// The value a solve-for operation is anchored to — exactly one of a present or a
@@ -442,7 +484,7 @@ fn anchor(present: Option<f64>, future: Option<f64>) -> Result<Anchor> {
 
 /// Parse `DATE:AMOUNT` pairs into dated cashflows, converting each ISO date to a
 /// year-offset from the first flow (ACT/365).
-fn dated_flows(pairs: &[String]) -> Result<Vec<DatedCashflow>> {
+fn dated_flows(pairs: &[String], currency: Currency) -> Result<Vec<DatedCashflow>> {
     let mut flows = Vec::with_capacity(pairs.len());
     let mut reference: Option<i64> = None;
     for pair in pairs {
@@ -455,106 +497,114 @@ fn dated_flows(pairs: &[String]) -> Result<Vec<DatedCashflow>> {
             .parse()
             .with_context(|| format!("invalid amount in flow `{pair}`"))?;
         let offset_years = act365_year_fraction(reference, day);
-        flows.push(DatedCashflow::new(offset_years, money(amount)?)?);
+        flows.push(DatedCashflow::new(offset_years, money(amount, currency)?)?);
     }
     Ok(flows)
 }
 
 /// Dispatch the `series` subcommands, returning the JSON label and result value.
-fn run_series(command: SeriesCommand) -> Result<(&'static str, f64)> {
+fn run_series(command: SeriesCommand, currency: Currency) -> Result<Scalar> {
     Ok(match command {
         SeriesCommand::Npv {
             rate: r,
             cashflows: cf,
         } => {
-            let flows = cashflows(&cf)?;
+            let flows = cashflows(&cf, currency)?;
             let series = Cashflows::<Per>::new(&flows);
-            ("npv", series.net_present_value(rate(r)?)?.value())
+            money_out("npv", series.net_present_value(rate(r)?)?)
         }
         SeriesCommand::Nfv {
             rate: r,
             cashflows: cf,
         } => {
-            let flows = cashflows(&cf)?;
+            let flows = cashflows(&cf, currency)?;
             let series = Cashflows::<Per>::new(&flows);
-            ("nfv", series.net_future_value(rate(r)?)?.value())
+            money_out("nfv", series.net_future_value(rate(r)?)?)
         }
         SeriesCommand::Irr {
             guess,
             cashflows: cf,
         } => {
-            let flows = cashflows(&cf)?;
+            let flows = cashflows(&cf, currency)?;
             let series = Cashflows::<Per>::new(&flows);
             let irr = series
                 .internal_rate_of_return_from(guess)
                 .context("no internal rate of return found")?;
-            ("irr", irr.value())
+            plain_out("irr", irr.value())
         }
         SeriesCommand::Mirr {
             finance,
             reinvest,
             cashflows: cf,
         } => {
-            let flows = cashflows(&cf)?;
+            let flows = cashflows(&cf, currency)?;
             let series = Cashflows::<Per>::new(&flows);
             let mirr = series
                 .modified_internal_rate_of_return(rate(finance)?, rate(reinvest)?)
                 .context("modified internal rate of return is undefined")?;
-            ("mirr", mirr.value())
+            plain_out("mirr", mirr.value())
         }
         SeriesCommand::Xnpv { rate: r, flows } => {
-            let dated = dated_flows(&flows)?;
+            let dated = dated_flows(&flows, currency)?;
             let series = DatedCashflows::new(&dated);
-            ("xnpv", series.net_present_value(annual_rate(r)?)?.value())
+            money_out("xnpv", series.net_present_value(annual_rate(r)?)?)
         }
         SeriesCommand::Xirr { guess, flows } => {
-            let dated = dated_flows(&flows)?;
+            let dated = dated_flows(&flows, currency)?;
             let series = DatedCashflows::new(&dated);
             let irr = series
                 .internal_rate_of_return_from(guess)
                 .context("no internal rate of return found")?;
-            ("xirr", irr.value())
+            plain_out("xirr", irr.value())
         }
     })
 }
 
 /// Dispatch the `single-sum` subcommands.
 #[allow(clippy::needless_pass_by_value)]
-fn run_single_sum(command: SingleSumCommand) -> Result<(&'static str, f64)> {
+fn run_single_sum(command: SingleSumCommand, currency: Currency) -> Result<Scalar> {
     Ok(match command {
         SingleSumCommand::Pv {
             rate: r,
             periods: n,
             future,
-        } => (
+        } => money_out(
             "single_sum_present_value",
-            single_sum::present_value(rate(r)?, period(n)?, money(future)?)?.value(),
+            single_sum::present_value(rate(r)?, period(n)?, money(future, currency)?)?,
         ),
         SingleSumCommand::Fv {
             rate: r,
             periods: n,
             present,
-        } => (
+        } => money_out(
             "single_sum_future_value",
-            single_sum::future_value(rate(r)?, period(n)?, money(present)?)?.value(),
+            single_sum::future_value(rate(r)?, period(n)?, money(present, currency)?)?,
         ),
         SingleSumCommand::Nper {
             rate: r,
             present,
             future,
         } => {
-            let n = single_sum::periods(rate(r)?, money(present)?, money(future)?)
-                .context("number of periods is undefined for these inputs")?;
-            ("single_sum_periods", n.value())
+            let n = single_sum::periods(
+                rate(r)?,
+                money(present, currency)?,
+                money(future, currency)?,
+            )
+            .context("number of periods is undefined for these inputs")?;
+            plain_out("single_sum_periods", n.value())
         }
         SingleSumCommand::Rate {
             periods: n,
             present,
             future,
         } => {
-            let r = single_sum::rate::<Per>(period(n)?, money(present)?, money(future)?)
-                .context("no rate solves these inputs")?;
-            ("single_sum_rate", r.value())
+            let r = single_sum::rate::<Per>(
+                period(n)?,
+                money(present, currency)?,
+                money(future, currency)?,
+            )
+            .context("no rate solves these inputs")?;
+            plain_out("single_sum_rate", r.value())
         }
     })
 }
@@ -563,32 +613,32 @@ fn run_single_sum(command: SingleSumCommand) -> Result<(&'static str, f64)> {
 // By-value dispatch mirrors the other `run_*` helpers; the arms are all-`Copy`, so
 // clippy would rather borrow — but owning the parsed command here is the clearer shape.
 #[allow(clippy::needless_pass_by_value)]
-fn run_annuity(command: AnnuityCommand) -> Result<(&'static str, f64)> {
+fn run_annuity(command: AnnuityCommand, currency: Currency) -> Result<Scalar> {
     Ok(match command {
         AnnuityCommand::Pv {
             rate: r,
             periods: n,
             payment,
-        } => (
+        } => money_out(
             "annuity_present_value",
-            annuity::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+            annuity::present_value(rate(r)?, period(n)?, money(payment, currency)?)?,
         ),
         AnnuityCommand::Fv {
             rate: r,
             periods: n,
             payment,
-        } => (
+        } => money_out(
             "annuity_future_value",
-            annuity::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+            annuity::future_value(rate(r)?, period(n)?, money(payment, currency)?)?,
         ),
         AnnuityCommand::Payment {
             rate: r,
             periods: n,
             present,
         } => {
-            let pmt = annuity::payment(rate(r)?, period(n)?, money(present)?)
+            let pmt = annuity::payment(rate(r)?, period(n)?, money(present, currency)?)
                 .context("annuity payment is undefined (e.g. zero periods)")?;
-            ("annuity_payment", pmt.value())
+            money_out("annuity_payment", pmt)
         }
         AnnuityCommand::Nper {
             rate: r,
@@ -597,13 +647,17 @@ fn run_annuity(command: AnnuityCommand) -> Result<(&'static str, f64)> {
             future,
         } => {
             let n = match anchor(present, future)? {
-                Anchor::Present(p) => annuity::periods(rate(r)?, money(payment)?, money(p)?),
-                Anchor::Future(f) => {
-                    annuity::periods_from_future(rate(r)?, money(payment)?, money(f)?)
+                Anchor::Present(p) => {
+                    annuity::periods(rate(r)?, money(payment, currency)?, money(p, currency)?)
                 }
+                Anchor::Future(f) => annuity::periods_from_future(
+                    rate(r)?,
+                    money(payment, currency)?,
+                    money(f, currency)?,
+                ),
             }
             .context("number of periods is undefined for these inputs")?;
-            ("annuity_periods", n.value())
+            plain_out("annuity_periods", n.value())
         }
         AnnuityCommand::Rate {
             periods: n,
@@ -612,67 +666,72 @@ fn run_annuity(command: AnnuityCommand) -> Result<(&'static str, f64)> {
             future,
         } => {
             let r = match anchor(present, future)? {
-                Anchor::Present(p) => annuity::rate::<Per>(period(n)?, money(payment)?, money(p)?),
-                Anchor::Future(f) => {
-                    annuity::rate_from_future::<Per>(period(n)?, money(payment)?, money(f)?)
+                Anchor::Present(p) => {
+                    annuity::rate::<Per>(period(n)?, money(payment, currency)?, money(p, currency)?)
                 }
+                Anchor::Future(f) => annuity::rate_from_future::<Per>(
+                    period(n)?,
+                    money(payment, currency)?,
+                    money(f, currency)?,
+                ),
             }
             .context("no rate solves these inputs")?;
-            ("annuity_rate", r.value())
+            plain_out("annuity_rate", r.value())
         }
         AnnuityCommand::Perpetuity { rate: r, payment } => {
-            let pv = annuity::perpetuity(rate(r)?, money(payment)?)
+            let pv = annuity::perpetuity(rate(r)?, money(payment, currency)?)
                 .context("perpetuity diverges (rate must exceed 0)")?;
-            ("annuity_perpetuity", pv.value())
+            money_out("annuity_perpetuity", pv)
         }
         AnnuityCommand::GrowingPerpetuity {
             rate: r,
             growth,
             payment,
         } => {
-            let pv = annuity::growing_perpetuity(rate(r)?, rate(growth)?, money(payment)?)
-                .context("growing perpetuity diverges (rate must exceed growth)")?;
-            ("annuity_growing_perpetuity", pv.value())
+            let pv =
+                annuity::growing_perpetuity(rate(r)?, rate(growth)?, money(payment, currency)?)
+                    .context("growing perpetuity diverges (rate must exceed growth)")?;
+            money_out("annuity_growing_perpetuity", pv)
         }
-        AnnuityCommand::Due { command } => run_annuity_due(command)?,
+        AnnuityCommand::Due { command } => run_annuity_due(command, currency)?,
     })
 }
 
 /// Dispatch the `annuity due` subcommands.
 #[allow(clippy::needless_pass_by_value)]
-fn run_annuity_due(command: AnnuityDueCommand) -> Result<(&'static str, f64)> {
+fn run_annuity_due(command: AnnuityDueCommand, currency: Currency) -> Result<Scalar> {
     Ok(match command {
         AnnuityDueCommand::Pv {
             rate: r,
             periods: n,
             payment,
-        } => (
+        } => money_out(
             "annuity_due_present_value",
-            annuity::due::present_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+            annuity::due::present_value(rate(r)?, period(n)?, money(payment, currency)?)?,
         ),
         AnnuityDueCommand::Fv {
             rate: r,
             periods: n,
             payment,
-        } => (
+        } => money_out(
             "annuity_due_future_value",
-            annuity::due::future_value(rate(r)?, period(n)?, money(payment)?)?.value(),
+            annuity::due::future_value(rate(r)?, period(n)?, money(payment, currency)?)?,
         ),
         AnnuityDueCommand::Payment {
             rate: r,
             periods: n,
             present,
         } => {
-            let pmt = annuity::due::payment(rate(r)?, period(n)?, money(present)?)
+            let pmt = annuity::due::payment(rate(r)?, period(n)?, money(present, currency)?)
                 .context("annuity-due payment is undefined (e.g. zero periods)")?;
-            ("annuity_due_payment", pmt.value())
+            money_out("annuity_due_payment", pmt)
         }
     })
 }
 
 /// Dispatch the `rate` subcommands. Each names a periodicity at runtime, resolved
 /// to a marker type via `dispatch_periodicity!`.
-fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
+fn run_rate(command: RateCommand) -> Result<Scalar> {
     Ok(match command {
         RateCommand::Ear {
             rate: r,
@@ -684,7 +743,7 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                     .context("effective annual rate is undefined for this input")?
                     .value()
             });
-            ("rate_effective_annual", ear)
+            plain_out("rate_effective_annual", ear)
         }
         RateCommand::Convert { rate: r, from, to } => {
             let converted = dispatch_periodicity!(from.as_str(), P => {
@@ -696,7 +755,7 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                         .value()
                 })
             });
-            ("rate_convert", converted)
+            plain_out("rate_convert", converted)
         }
         RateCommand::FromNominal {
             nominal,
@@ -707,7 +766,7 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                     .context("invalid nominal rate")?
                     .value()
             });
-            ("rate_from_nominal", periodic)
+            plain_out("rate_from_nominal", periodic)
         }
         RateCommand::Nominal {
             rate: r,
@@ -718,17 +777,18 @@ fn run_rate(command: RateCommand) -> Result<(&'static str, f64)> {
                     .nominal_annual()
                     .context("nominal annual rate is undefined for this input")?
             });
-            ("rate_nominal", nominal)
+            plain_out("rate_nominal", nominal)
         }
     })
 }
 
 /// The scalar (single-value) operations. Tabular `amortize` is handled separately.
-fn run_scalar(command: Command) -> Result<(&'static str, f64)> {
+fn run_scalar(command: Command, currency: Currency) -> Result<Scalar> {
     match command {
-        Command::Series { command } => run_series(command),
-        Command::SingleSum { command } => run_single_sum(command),
-        Command::Annuity { command } => run_annuity(command),
+        Command::Series { command } => run_series(command, currency),
+        Command::SingleSum { command } => run_single_sum(command, currency),
+        Command::Annuity { command } => run_annuity(command, currency),
+        // The `rate` family takes no monetary amounts, so currency does not apply.
         Command::Rate { command } => run_rate(command),
         Command::Amortize { .. } => unreachable!("amortize is handled by run_amortize"),
     }
@@ -738,21 +798,26 @@ fn run_scalar(command: Command) -> Result<(&'static str, f64)> {
 /// under `--json` (ADR-0028's tabular output convention).
 fn run_amortize(
     json: bool,
+    currency: Currency,
     r: f64,
     principal: f64,
     periods: Option<f64>,
     payment: Option<f64>,
 ) -> Result<()> {
     let rate = rate(r)?;
-    let principal = money(principal)?;
+    let principal = money(principal, currency)?;
     let schedule = match (periods, payment) {
         (Some(n), None) => amortization::Schedule::<Per>::for_term(rate, period(n)?, principal),
-        (None, Some(p)) => amortization::Schedule::<Per>::with_payment(rate, money(p)?, principal),
+        (None, Some(p)) => {
+            amortization::Schedule::<Per>::with_payment(rate, money(p, currency)?, principal)
+        }
         (None, None) => bail!("provide either --periods or --payment"),
         (Some(_), Some(_)) => bail!("--periods and --payment are mutually exclusive"),
     }
     .context("amortization schedule is undefined for these inputs")?;
 
+    // A non-`XXX` currency is echoed alongside the (bare-number) schedule.
+    let code = (currency != Currency::Xxx).then(|| currency.code());
     let installments: Vec<_> = schedule.collect();
     if json {
         let rows: Vec<serde_json::Value> = installments
@@ -767,8 +832,18 @@ fn run_amortize(
                 })
             })
             .collect();
-        println!("{}", serde_json::Value::Array(rows));
+        // Bare array by default (unchanged); wrap with the currency when set.
+        match code {
+            Some(code) => println!(
+                "{}",
+                serde_json::json!({ "currency": code, "schedule": rows })
+            ),
+            None => println!("{}", serde_json::Value::Array(rows)),
+        }
     } else {
+        if let Some(code) = code {
+            println!("# currency: {code}");
+        }
         println!("period\tpayment\tinterest\tprincipal\tbalance");
         for i in &installments {
             println!(
@@ -786,21 +861,34 @@ fn run_amortize(
 
 fn run(cli: Cli) -> Result<()> {
     let json = cli.json;
+    let currency = cli.currency;
     match cli.command {
         Command::Amortize {
             rate: r,
             principal,
             periods,
             payment,
-        } => return run_amortize(json, r, principal, periods, payment),
+        } => return run_amortize(json, currency, r, principal, periods, payment),
         command => {
-            let (label, value) = run_scalar(command)?;
+            let scalar = run_scalar(command, currency)?;
+            // Echo the currency only for a monetary result in a non-`XXX` currency,
+            // so plain-number output (the default, or a rate/period result) is
+            // unchanged.
+            let code = scalar
+                .currency
+                .filter(|c| *c != Currency::Xxx)
+                .map(Currency::code);
             if json {
                 let mut object = serde_json::Map::new();
-                object.insert(label.to_owned(), serde_json::json!(value));
+                object.insert(scalar.label.to_owned(), serde_json::json!(scalar.value));
+                if let Some(code) = code {
+                    object.insert("currency".to_owned(), serde_json::json!(code));
+                }
                 println!("{}", serde_json::Value::Object(object));
+            } else if let Some(code) = code {
+                println!("{} {code}", scalar.value);
             } else {
-                println!("{value}");
+                println!("{}", scalar.value);
             }
         }
     }

@@ -261,3 +261,70 @@ fn an_invalid_rate_is_an_error() {
         .stdout(predicate::str::contains("error"))
         .stdout(predicate::str::contains("rate"));
 }
+
+// ---- Currency (the `currency` input field): ADR-0034 ---------------------
+
+#[test]
+fn npv_echoes_the_currency_when_given() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"npv","arguments":{"rate":0.01,"cashflows":[-100,60,60],"currency":"USD"}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("18.22"))
+        .stdout(predicate::str::contains("\"currency\":\"USD\""));
+}
+
+#[test]
+fn npv_without_currency_has_no_currency_field() {
+    // Omitting `currency` (XXX) keeps the pre-currency output shape.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"npv","arguments":{"rate":0.01,"cashflows":[-100,60,60]}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"currency\"").not());
+}
+
+#[test]
+fn a_rate_result_carries_no_currency() {
+    // IRR is a rate, not money: the `currency` input is accepted but not echoed.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"irr","arguments":{"cashflows":[-100,60,60],"currency":"USD"}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0.130"))
+        .stdout(predicate::str::contains("\"currency\"").not());
+}
+
+#[test]
+fn an_unknown_currency_code_is_an_error() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"npv","arguments":{"rate":0.01,"cashflows":[-100,60],"currency":"ZZZ"}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success() // process exits cleanly; the JSON-RPC response carries the error
+        .stdout(predicate::str::contains("error"))
+        .stdout(predicate::str::contains("ZZZ"));
+}

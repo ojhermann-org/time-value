@@ -588,3 +588,103 @@ fn a_nonconvergent_irr_fails() {
         .failure()
         .stderr(predicate::str::contains("internal rate of return"));
 }
+
+// ---- Currency (--currency): ADR-0034 -------------------------------------
+
+#[test]
+fn currency_echoes_the_code_after_a_monetary_result() {
+    time_value()
+        .args([
+            "--currency",
+            "USD",
+            "series",
+            "npv",
+            "--rate",
+            "0.01",
+            "-100",
+            "60",
+            "60",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("18.22").and(predicate::str::contains("USD")));
+}
+
+#[test]
+fn default_currency_stays_a_bare_number() {
+    // No --currency (XXX): output is unchanged — no code appended.
+    time_value()
+        .args(["series", "npv", "--rate", "0.01", "-100", "60", "60"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("XXX").not());
+}
+
+#[test]
+fn currency_is_added_as_a_json_field() {
+    time_value()
+        .args([
+            "--json",
+            "--currency",
+            "JPY",
+            "single-sum",
+            "fv",
+            "--rate",
+            "0.01",
+            "--periods",
+            "12",
+            "--present",
+            "1000",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"currency\":\"JPY\""));
+}
+
+#[test]
+fn currency_is_not_echoed_for_a_rate_result() {
+    // IRR is a rate, not money — the currency does not apply.
+    time_value()
+        .args(["--currency", "USD", "series", "irr", "-100", "60", "60"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("USD").not());
+}
+
+#[test]
+fn an_unknown_currency_code_is_rejected() {
+    time_value()
+        .args([
+            "--currency",
+            "ZZZ",
+            "series",
+            "npv",
+            "--rate",
+            "0.01",
+            "-100",
+            "60",
+            "60",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("ZZZ"));
+}
+
+#[test]
+fn amortize_echoes_currency_as_a_comment_line() {
+    time_value()
+        .args([
+            "--currency",
+            "USD",
+            "amortize",
+            "--rate",
+            "0.10",
+            "--payment",
+            "500",
+            "--principal",
+            "1000",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("# currency: USD"));
+}
