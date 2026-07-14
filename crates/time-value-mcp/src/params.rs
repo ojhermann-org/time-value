@@ -16,6 +16,10 @@ pub(crate) struct SeriesInput {
     /// Cashflows at periods 0, 1, 2, … (signed: outflow negative, inflow
     /// positive). Period 0 is "now" and is not discounted.
     pub cashflows: Vec<f64>,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// A cashflow series and an optional solver guess — input for `irr`.
@@ -26,6 +30,10 @@ pub(crate) struct IrrInput {
     /// Initial guess for the Newton–Raphson solve (default `0.1`).
     #[serde(default = "default_guess")]
     pub guess: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 fn default_guess() -> f64 {
@@ -41,6 +49,10 @@ pub(crate) struct MirrInput {
     pub reinvest: f64,
     /// Cashflows at periods 0, 1, 2, … (signed: outflow negative).
     pub cashflows: Vec<f64>,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// A single dated cashflow — an ISO date and a signed amount.
@@ -59,6 +71,10 @@ pub(crate) struct DatedSeriesInput {
     pub rate: f64,
     /// Dated cashflows; the first date is the valuation reference.
     pub flows: Vec<DatedFlow>,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Dated cashflows and an optional solver guess — input for `xirr`.
@@ -69,6 +85,10 @@ pub(crate) struct DatedIrrInput {
     /// Initial guess for the Newton–Raphson solve, annual (default `0.1`).
     #[serde(default = "default_guess")]
     pub guess: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `single_sum_present_value` tool.
@@ -80,6 +100,10 @@ pub(crate) struct PresentValueInput {
     pub periods: f64,
     /// The future amount to discount to today.
     pub future: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `single_sum_future_value` tool.
@@ -91,6 +115,10 @@ pub(crate) struct FutureValueInput {
     pub periods: f64,
     /// The present amount to compound forward.
     pub present: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `single_sum_periods` tool (solve for the number of periods).
@@ -102,6 +130,10 @@ pub(crate) struct SingleSumPeriodsInput {
     pub present: f64,
     /// The future amount.
     pub future: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `single_sum_rate` tool (solve for the per-period rate).
@@ -113,6 +145,10 @@ pub(crate) struct SingleSumRateInput {
     pub present: f64,
     /// The future amount.
     pub future: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `annuity_periods` tool. Provide exactly one of `present` or
@@ -129,6 +165,10 @@ pub(crate) struct AnnuityPeriodsInput {
     /// Solve from this future value (mutually exclusive with `present`).
     #[serde(default)]
     pub future: Option<f64>,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `annuity_rate` tool. Provide exactly one of `present` or
@@ -145,6 +185,10 @@ pub(crate) struct AnnuityRateInput {
     /// Solve from this future value (mutually exclusive with `present`).
     #[serde(default)]
     pub future: Option<f64>,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `annuity_perpetuity` tool.
@@ -154,6 +198,10 @@ pub(crate) struct PerpetuityInput {
     pub rate: f64,
     /// The payment made at the end of each period, forever.
     pub payment: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `annuity_growing_perpetuity` tool.
@@ -165,6 +213,10 @@ pub(crate) struct GrowingPerpetuityInput {
     pub growth: f64,
     /// The first payment (at the end of period 1).
     pub payment: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `rate_effective_annual` and `rate_nominal` tools.
@@ -211,6 +263,10 @@ pub(crate) struct AmortizeInput {
     /// Amortise with this level payment (mutually exclusive with `periods`).
     #[serde(default)]
     pub payment: Option<f64>,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `annuity_present_value` and `annuity_future_value` tools.
@@ -222,6 +278,10 @@ pub(crate) struct AnnuityValueInput {
     pub periods: f64,
     /// The payment made at the end of each period.
     pub payment: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }
 
 /// Input for the `annuity_payment` tool.
@@ -233,4 +293,8 @@ pub(crate) struct AnnuityPaymentInput {
     pub periods: f64,
     /// The present value to amortise into level payments.
     pub present: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<String>,
 }

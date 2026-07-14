@@ -14,8 +14,8 @@ use rmcp::{
     tool, tool_handler, tool_router, ErrorData, ServerHandler,
 };
 use time_value::{
-    amortization, annuity, single_sum, Annual, Cashflows, DatedCashflow, DatedCashflows, Money,
-    Monthly, Period, Rate, TvmError,
+    amortization, annuity, single_sum, Annual, Cashflows, Currency, DatedCashflow, DatedCashflows,
+    Money, Monthly, Period, Rate, TvmError,
 };
 use time_value_daycount::{act365_year_fraction, iso_to_day};
 
@@ -87,8 +87,10 @@ periodicities), `rate_from_nominal` and `rate_nominal` (nominal/APR) — each ta
 a periodicity (daily, weekly, monthly, quarterly, semi-annual, annual). \
 `amortize` returns a schedule (an array of period/payment/interest/principal/\
 balance rows) from a term or a level payment. Rates are per period (annual for \
-`xnpv`/`xirr`); cashflows are signed (outflow negative). Source: \
-https://github.com/ojhermann-org/time-value";
+`xnpv`/`xirr`); cashflows are signed (outflow negative). Every amount-bearing \
+tool accepts an optional `currency` (an ISO 4217 code, e.g. `USD`); it \
+denominates the amounts and is echoed on monetary results (omit for \
+currency-agnostic). Source: https://github.com/ojhermann-org/time-value";
 
 /// The MCP server. Stateless: the operations are pure functions of their inputs.
 #[derive(Clone)]
@@ -110,13 +112,14 @@ impl TimeValueServer {
         description = "Net present value of a cashflow series discounted at a per-period rate: sum of CF_t / (1+r)^t."
     )]
     fn npv(&self, Parameters(input): Parameters<SeriesInput>) -> Result<CallToolResult, ErrorData> {
-        let flows = cashflows(&input.cashflows)?;
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let value = series
             .net_present_value(rate(input.rate)?)
             .map_err(tvm)?
             .value();
-        Ok(result("npv", value))
+        Ok(result_money("npv", value, currency))
     }
 
     #[tool(
@@ -124,13 +127,14 @@ impl TimeValueServer {
         description = "Net future value of a cashflow series compounded to its final period at a per-period rate."
     )]
     fn nfv(&self, Parameters(input): Parameters<SeriesInput>) -> Result<CallToolResult, ErrorData> {
-        let flows = cashflows(&input.cashflows)?;
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let value = series
             .net_future_value(rate(input.rate)?)
             .map_err(tvm)?
             .value();
-        Ok(result("nfv", value))
+        Ok(result_money("nfv", value, currency))
     }
 
     #[tool(
@@ -138,7 +142,8 @@ impl TimeValueServer {
         description = "Internal rate of return (per period) of a cashflow series: the rate at which its net present value is zero."
     )]
     fn irr(&self, Parameters(input): Parameters<IrrInput>) -> Result<CallToolResult, ErrorData> {
-        let flows = cashflows(&input.cashflows)?;
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let irr = series
             .internal_rate_of_return_from(input.guess)
@@ -151,7 +156,8 @@ impl TimeValueServer {
         description = "Modified internal rate of return (per period): discounts outflows at a finance rate and compounds inflows at a reinvestment rate, then equates the two over the series' life."
     )]
     fn mirr(&self, Parameters(input): Parameters<MirrInput>) -> Result<CallToolResult, ErrorData> {
-        let flows = cashflows(&input.cashflows)?;
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let mirr = series
             .modified_internal_rate_of_return(rate(input.finance)?, rate(input.reinvest)?)
@@ -167,13 +173,14 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<DatedSeriesInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let flows = dated_flows(&input.flows)?;
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let flows = dated_flows(&input.flows, currency)?;
         let series = DatedCashflows::new(&flows);
         let value = series
             .net_present_value(annual_rate(input.rate)?)
             .map_err(tvm)?
             .value();
-        Ok(result("xnpv", value))
+        Ok(result_money("xnpv", value, currency))
     }
 
     #[tool(
@@ -184,7 +191,8 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<DatedIrrInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let flows = dated_flows(&input.flows)?;
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let flows = dated_flows(&input.flows, currency)?;
         let series = DatedCashflows::new(&flows);
         let irr = series
             .internal_rate_of_return_from(input.guess)
@@ -200,14 +208,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<PresentValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let value = single_sum::present_value(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.future)?,
+            money(input.future, currency)?,
         )
         .map_err(tvm)?
         .value();
-        Ok(result("single_sum_present_value", value))
+        Ok(result_money("single_sum_present_value", value, currency))
     }
 
     #[tool(
@@ -218,14 +227,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<FutureValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let value = single_sum::future_value(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.present)?,
+            money(input.present, currency)?,
         )
         .map_err(tvm)?
         .value();
-        Ok(result("single_sum_future_value", value))
+        Ok(result_money("single_sum_future_value", value, currency))
     }
 
     #[tool(
@@ -236,10 +246,11 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<SingleSumPeriodsInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let periods = single_sum::periods(
             rate(input.rate)?,
-            money(input.present)?,
-            money(input.future)?,
+            money(input.present, currency)?,
+            money(input.future, currency)?,
         )
         .map_err(tvm)?;
         Ok(result("single_sum_periods", periods.value()))
@@ -253,10 +264,11 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<SingleSumRateInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let solved = single_sum::rate::<Monthly>(
             period(input.periods)?,
-            money(input.present)?,
-            money(input.future)?,
+            money(input.present, currency)?,
+            money(input.future, currency)?,
         )
         .map_err(tvm)?;
         Ok(result("single_sum_rate", solved.value()))
@@ -270,14 +282,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let value = annuity::present_value(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.payment)?,
+            money(input.payment, currency)?,
         )
         .map_err(tvm)?
         .value();
-        Ok(result("annuity_present_value", value))
+        Ok(result_money("annuity_present_value", value, currency))
     }
 
     #[tool(
@@ -288,14 +301,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let value = annuity::future_value(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.payment)?,
+            money(input.payment, currency)?,
         )
         .map_err(tvm)?
         .value();
-        Ok(result("annuity_future_value", value))
+        Ok(result_money("annuity_future_value", value, currency))
     }
 
     #[tool(
@@ -306,13 +320,14 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityPaymentInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let payment = annuity::payment(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.present)?,
+            money(input.present, currency)?,
         )
         .map_err(tvm)?;
-        Ok(result("annuity_payment", payment.value()))
+        Ok(result_money("annuity_payment", payment.value(), currency))
     }
 
     #[tool(
@@ -323,11 +338,12 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityPeriodsInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let r = rate(input.rate)?;
-        let pmt = money(input.payment)?;
+        let pmt = money(input.payment, currency)?;
         let periods = match anchor(input.present, input.future)? {
-            Anchor::Present(p) => annuity::periods(r, pmt, money(p)?),
-            Anchor::Future(f) => annuity::periods_from_future(r, pmt, money(f)?),
+            Anchor::Present(p) => annuity::periods(r, pmt, money(p, currency)?),
+            Anchor::Future(f) => annuity::periods_from_future(r, pmt, money(f, currency)?),
         }
         .map_err(tvm)?;
         Ok(result("annuity_periods", periods.value()))
@@ -341,11 +357,12 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityRateInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let n = period(input.periods)?;
-        let pmt = money(input.payment)?;
+        let pmt = money(input.payment, currency)?;
         let solved = match anchor(input.present, input.future)? {
-            Anchor::Present(p) => annuity::rate::<Monthly>(n, pmt, money(p)?),
-            Anchor::Future(f) => annuity::rate_from_future::<Monthly>(n, pmt, money(f)?),
+            Anchor::Present(p) => annuity::rate::<Monthly>(n, pmt, money(p, currency)?),
+            Anchor::Future(f) => annuity::rate_from_future::<Monthly>(n, pmt, money(f, currency)?),
         }
         .map_err(tvm)?;
         Ok(result("annuity_rate", solved.value()))
@@ -359,10 +376,11 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<PerpetuityInput>,
     ) -> Result<CallToolResult, ErrorData> {
-        let value = annuity::perpetuity(rate(input.rate)?, money(input.payment)?)
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let value = annuity::perpetuity(rate(input.rate)?, money(input.payment, currency)?)
             .map_err(tvm)?
             .value();
-        Ok(result("annuity_perpetuity", value))
+        Ok(result_money("annuity_perpetuity", value, currency))
     }
 
     #[tool(
@@ -373,14 +391,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<GrowingPerpetuityInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let value = annuity::growing_perpetuity(
             rate(input.rate)?,
             rate(input.growth)?,
-            money(input.payment)?,
+            money(input.payment, currency)?,
         )
         .map_err(tvm)?
         .value();
-        Ok(result("annuity_growing_perpetuity", value))
+        Ok(result_money("annuity_growing_perpetuity", value, currency))
     }
 
     #[tool(
@@ -391,14 +410,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let value = annuity::due::present_value(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.payment)?,
+            money(input.payment, currency)?,
         )
         .map_err(tvm)?
         .value();
-        Ok(result("annuity_due_present_value", value))
+        Ok(result_money("annuity_due_present_value", value, currency))
     }
 
     #[tool(
@@ -409,14 +429,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let value = annuity::due::future_value(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.payment)?,
+            money(input.payment, currency)?,
         )
         .map_err(tvm)?
         .value();
-        Ok(result("annuity_due_future_value", value))
+        Ok(result_money("annuity_due_future_value", value, currency))
     }
 
     #[tool(
@@ -427,13 +448,18 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityPaymentInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let payment = annuity::due::payment(
             rate(input.rate)?,
             period(input.periods)?,
-            money(input.present)?,
+            money(input.present, currency)?,
         )
         .map_err(tvm)?;
-        Ok(result("annuity_due_payment", payment.value()))
+        Ok(result_money(
+            "annuity_due_payment",
+            payment.value(),
+            currency,
+        ))
     }
 
     #[tool(
@@ -512,14 +538,15 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AmortizeInput>,
     ) -> Result<CallToolResult, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
         let r = rate(input.rate)?;
-        let principal = money(input.principal)?;
+        let principal = money(input.principal, currency)?;
         let schedule = match (input.periods, input.payment) {
             (Some(n), None) => {
                 amortization::Schedule::<Monthly>::for_term(r, period(n)?, principal)
             }
             (None, Some(p)) => {
-                amortization::Schedule::<Monthly>::with_payment(r, money(p)?, principal)
+                amortization::Schedule::<Monthly>::with_payment(r, money(p, currency)?, principal)
             }
             (None, None) => {
                 return Err(ErrorData::invalid_params(
@@ -548,9 +575,12 @@ impl TimeValueServer {
             })
             .collect();
         // One field keyed by the operation (like the scalar tools), whose value is
-        // the tabular array (ADR-0028).
+        // the tabular array (ADR-0028), plus a `currency` field when non-`Xxx`.
         let mut object = serde_json::Map::new();
         object.insert("amortize".to_string(), serde_json::Value::Array(rows));
+        if currency != Currency::Xxx {
+            object.insert("currency".to_string(), serde_json::json!(currency.code()));
+        }
         Ok(CallToolResult::structured(serde_json::Value::Object(
             object,
         )))
@@ -586,12 +616,24 @@ fn period(value: f64) -> Result<Period<Monthly>, ErrorData> {
     Period::new(value).map_err(tvm)
 }
 
-fn money(value: f64) -> Result<Money, ErrorData> {
-    Money::agnostic(value).map_err(tvm)
+/// Resolve an optional ISO 4217 code to a [`Currency`]: `None` (the field was
+/// omitted) is `Xxx` (currency-agnostic), preserving the pre-currency behaviour;
+/// an unknown code is an `invalid_params` error.
+fn resolve_currency(code: Option<&str>) -> Result<Currency, ErrorData> {
+    match code {
+        None => Ok(Currency::Xxx),
+        Some(code) => Currency::from_code(code).ok_or_else(|| {
+            ErrorData::invalid_params(format!("unknown ISO 4217 currency code `{code}`"), None)
+        }),
+    }
 }
 
-fn cashflows(values: &[f64]) -> Result<Vec<Money>, ErrorData> {
-    values.iter().copied().map(money).collect()
+fn money(value: f64, currency: Currency) -> Result<Money, ErrorData> {
+    Money::new(value, currency).map_err(tvm)
+}
+
+fn cashflows(values: &[f64], currency: Currency) -> Result<Vec<Money>, ErrorData> {
+    values.iter().copied().map(|v| money(v, currency)).collect()
 }
 
 /// The value a solve-for operation is anchored to — exactly one of a present or a
@@ -624,7 +666,7 @@ fn anchor(present: Option<f64>, future: Option<f64>) -> Result<Anchor, ErrorData
 
 /// Convert dated inputs to core [`DatedCashflow`]s, rebasing offsets to the first
 /// flow (ACT/365). A malformed date becomes an MCP `invalid_params` error.
-fn dated_flows(flows: &[DatedFlow]) -> Result<Vec<DatedCashflow>, ErrorData> {
+fn dated_flows(flows: &[DatedFlow], currency: Currency) -> Result<Vec<DatedCashflow>, ErrorData> {
     let mut out = Vec::with_capacity(flows.len());
     let mut reference: Option<i64> = None;
     for flow in flows {
@@ -632,15 +674,29 @@ fn dated_flows(flows: &[DatedFlow]) -> Result<Vec<DatedCashflow>, ErrorData> {
             iso_to_day(&flow.date).map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
         let reference = *reference.get_or_insert(day);
         let offset_years = act365_year_fraction(reference, day);
-        out.push(DatedCashflow::new(offset_years, money(flow.amount)?).map_err(tvm)?);
+        out.push(DatedCashflow::new(offset_years, money(flow.amount, currency)?).map_err(tvm)?);
     }
     Ok(out)
 }
 
-/// A single-field structured tool result, keyed by the operation.
+/// A single-field structured tool result, keyed by the operation — for a
+/// non-monetary value (a rate or a period count).
 fn result(label: &str, value: f64) -> CallToolResult {
     let mut object = serde_json::Map::new();
     object.insert(label.to_owned(), serde_json::json!(value));
+    CallToolResult::structured(serde_json::Value::Object(object))
+}
+
+/// A monetary tool result — the value keyed by the operation, plus a `currency`
+/// field when `currency` is not `Xxx` (so agnostic results keep their old shape).
+/// The result is denominated in the same currency as the inputs, which the
+/// operations preserve.
+fn result_money(label: &str, value: f64, currency: Currency) -> CallToolResult {
+    let mut object = serde_json::Map::new();
+    object.insert(label.to_owned(), serde_json::json!(value));
+    if currency != Currency::Xxx {
+        object.insert("currency".to_owned(), serde_json::json!(currency.code()));
+    }
     CallToolResult::structured(serde_json::Value::Object(object))
 }
 
