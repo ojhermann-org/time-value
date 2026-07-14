@@ -154,11 +154,39 @@ fn validate(instance: &Value, schema: &Value, root: &Value, path: &str) {
     }
 }
 
-/// The series family: each call's `structuredContent` must validate against the
-/// `outputSchema` the same tool advertises.
+/// Run every case and assert its `structuredContent` validates against the
+/// `outputSchema` the same tool advertises in `tools/list`. Shared by the
+/// per-family conformance tests.
+fn check_conformance(cases: &[Case]) {
+    let responses = run(cases);
+
+    let tools = responses[&100]["result"]["tools"]
+        .as_array()
+        .expect("tools array");
+    let schema_for = |name: &str| -> Value {
+        tools
+            .iter()
+            .find(|t| t["name"] == name)
+            .and_then(|t| t.get("outputSchema"))
+            .cloned()
+            .unwrap_or_else(|| panic!("tool `{name}` declares no outputSchema"))
+    };
+
+    for (i, case) in cases.iter().enumerate() {
+        let id = i64::try_from(i).expect("case index fits i64");
+        let response = &responses[&id];
+        let content = response["result"]
+            .get("structuredContent")
+            .unwrap_or_else(|| panic!("`{}` returned no structuredContent", case.tool));
+        let schema = schema_for(case.tool);
+        validate(content, &schema, &schema, case.tool);
+    }
+}
+
+/// The series family (`npv`/`nfv`/`irr`/`mirr`/`xnpv`/`xirr`).
 #[test]
 fn series_output_conforms_to_declared_schema() {
-    let cases = [
+    check_conformance(&[
         Case {
             tool: "npv",
             args: json!({"rate":0.01,"cashflows":[-100,60,60],"currency":"USD"}),
@@ -183,30 +211,28 @@ fn series_output_conforms_to_declared_schema() {
             tool: "xirr",
             args: json!({"flows":[{"date":"2020-01-01","amount":-100},{"date":"2021-01-01","amount":110}]}),
         },
-    ];
+    ]);
+}
 
-    let responses = run(&cases);
-
-    // Map each tool to its declared output schema from tools/list.
-    let tools = responses[&100]["result"]["tools"]
-        .as_array()
-        .expect("tools array");
-    let schema_for = |name: &str| -> Value {
-        tools
-            .iter()
-            .find(|t| t["name"] == name)
-            .and_then(|t| t.get("outputSchema"))
-            .cloned()
-            .unwrap_or_else(|| panic!("tool `{name}` declares no outputSchema"))
-    };
-
-    for (i, case) in cases.iter().enumerate() {
-        let id = i64::try_from(i).expect("case index fits i64");
-        let response = &responses[&id];
-        let content = response["result"]
-            .get("structuredContent")
-            .unwrap_or_else(|| panic!("`{}` returned no structuredContent", case.tool));
-        let schema = schema_for(case.tool);
-        validate(content, &schema, &schema, case.tool);
-    }
+/// The single-sum family (present/future value, and the NPER/RATE solves).
+#[test]
+fn single_sum_output_conforms_to_declared_schema() {
+    check_conformance(&[
+        Case {
+            tool: "single_sum_present_value",
+            args: json!({"rate":0.01,"periods":12,"future":1000,"currency":"USD"}),
+        },
+        Case {
+            tool: "single_sum_future_value",
+            args: json!({"rate":0.01,"periods":12,"present":1000}),
+        },
+        Case {
+            tool: "single_sum_periods",
+            args: json!({"rate":0.01,"present":1000,"future":1126.825}),
+        },
+        Case {
+            tool: "single_sum_rate",
+            args: json!({"periods":12,"present":1000,"future":1126.825}),
+        },
+    ]);
 }

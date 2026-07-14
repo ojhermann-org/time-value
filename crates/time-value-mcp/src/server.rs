@@ -213,16 +213,15 @@ impl TimeValueServer {
     fn single_sum_present_value(
         &self,
         Parameters(input): Parameters<PresentValueInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = single_sum::present_value(
+        let money = single_sum::present_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.future, currency)?,
         )
-        .map_err(tvm)?
-        .value();
-        Ok(result_money("single_sum_present_value", value, currency))
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -232,16 +231,15 @@ impl TimeValueServer {
     fn single_sum_future_value(
         &self,
         Parameters(input): Parameters<FutureValueInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = single_sum::future_value(
+        let money = single_sum::future_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.present, currency)?,
         )
-        .map_err(tvm)?
-        .value();
-        Ok(result_money("single_sum_future_value", value, currency))
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -251,7 +249,7 @@ impl TimeValueServer {
     fn single_sum_periods(
         &self,
         Parameters(input): Parameters<SingleSumPeriodsInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let periods = single_sum::periods(
             rate(input.rate)?,
@@ -259,7 +257,7 @@ impl TimeValueServer {
             money(input.future, currency)?,
         )
         .map_err(tvm)?;
-        Ok(result("single_sum_periods", periods.value()))
+        Ok(Json(ScalarResult::new(periods.value())))
     }
 
     #[tool(
@@ -269,7 +267,7 @@ impl TimeValueServer {
     fn single_sum_rate(
         &self,
         Parameters(input): Parameters<SingleSumRateInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let solved = single_sum::rate::<Monthly>(
             period(input.periods)?,
@@ -277,7 +275,7 @@ impl TimeValueServer {
             money(input.future, currency)?,
         )
         .map_err(tvm)?;
-        Ok(result("single_sum_rate", solved.value()))
+        Ok(Json(ScalarResult::new(solved.value())))
     }
 
     #[tool(
