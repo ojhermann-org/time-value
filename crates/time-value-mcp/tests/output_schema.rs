@@ -284,3 +284,26 @@ fn annuity_output_conforms_to_declared_schema() {
         },
     ]);
 }
+
+/// The rate family: EAR, cross-periodicity conversion, and nominal/APR quotes.
+#[test]
+fn rate_output_conforms_to_declared_schema() {
+    check_conformance(&[
+        Case {
+            tool: "rate_effective_annual",
+            args: json!({"rate":0.01,"periodicity":"monthly"}),
+        },
+        Case {
+            tool: "rate_convert",
+            args: json!({"rate":0.01,"from":"monthly","to":"quarterly"}),
+        },
+        Case {
+            tool: "rate_from_nominal",
+            args: json!({"nominal":0.12,"periodicity":"monthly"}),
+        },
+        Case {
+            tool: "rate_nominal",
+            args: json!({"rate":0.01,"periodicity":"monthly"}),
+        },
+    ]);
+}

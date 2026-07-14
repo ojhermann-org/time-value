@@ -182,6 +182,8 @@ fn rate_conversion_tools() {
 
 #[test]
 fn rate_rejects_an_unknown_periodicity() {
+    // Periodicity is a typed enum (ADR-0039), so an unknown value is refused by
+    // deserialization at the boundary, before the handler runs.
     let calls = concat!(
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"rate_effective_annual","arguments":{"rate":0.01,"periodicity":"fortnightly"}}}"#,
         "\n",
@@ -192,7 +194,10 @@ fn rate_rejects_an_unknown_periodicity() {
         .write_stdin(session(calls))
         .assert()
         .success()
-        .stdout(predicate::str::contains("unknown periodicity"));
+        // The deserialize error names the bad value and lists the valid set.
+        .stdout(predicate::str::contains("unknown variant"))
+        .stdout(predicate::str::contains("fortnightly"))
+        .stdout(predicate::str::contains("semi-annual"));
 }
 
 #[test]

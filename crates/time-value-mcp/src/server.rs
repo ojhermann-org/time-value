@@ -22,50 +22,43 @@ use time_value_daycount::{act365_year_fraction, iso_to_day};
 use crate::params::{
     AmortizeInput, AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput,
     DatedFlow, DatedIrrInput, DatedSeriesInput, FutureValueInput, GrowingPerpetuityInput, IrrInput,
-    MirrInput, PerpetuityInput, PresentValueInput, RateConvertInput, RateEffectiveAnnualInput,
-    RateFromNominalInput, SeriesInput, SingleSumPeriodsInput, SingleSumRateInput,
+    MirrInput, Periodicity, PerpetuityInput, PresentValueInput, RateConvertInput,
+    RateEffectiveAnnualInput, RateFromNominalInput, SeriesInput, SingleSumPeriodsInput,
+    SingleSumRateInput,
 };
 use crate::results::{MoneyResult, ScalarResult};
 
-/// Run `$body` with the type alias `$ty` bound to the periodicity marker named by
-/// `$name` at runtime; an unknown name returns an MCP `invalid_params` error from
-/// the calling tool. Used by the `rate_*` conversion tools, where periodicity is
-/// intrinsic (ADR-0028/0029).
+/// Run `$body` with the type alias `$ty` bound to the core periodicity marker for
+/// the [`Periodicity`] value `$value`. Used by the `rate_*` conversion tools,
+/// where periodicity is intrinsic (ADR-0028/0029). The match is exhaustive: an
+/// unknown periodicity is already refused by deserialization at the boundary
+/// (ADR-0039), so there is no error arm.
 macro_rules! dispatch_periodicity {
-    ($name:expr, $ty:ident => $body:expr) => {{
-        match $name {
-            "daily" => {
+    ($value:expr, $ty:ident => $body:expr) => {{
+        match $value {
+            Periodicity::Daily => {
                 type $ty = time_value::Daily;
                 $body
             }
-            "weekly" => {
+            Periodicity::Weekly => {
                 type $ty = time_value::Weekly;
                 $body
             }
-            "monthly" => {
+            Periodicity::Monthly => {
                 type $ty = time_value::Monthly;
                 $body
             }
-            "quarterly" => {
+            Periodicity::Quarterly => {
                 type $ty = time_value::Quarterly;
                 $body
             }
-            "semi-annual" => {
+            Periodicity::SemiAnnual => {
                 type $ty = time_value::SemiAnnual;
                 $body
             }
-            "annual" => {
+            Periodicity::Annual => {
                 type $ty = time_value::Annual;
                 $body
-            }
-            other => {
-                return Err(ErrorData::invalid_params(
-                    format!(
-                        "unknown periodicity `{other}` \
-                         (expected daily, weekly, monthly, quarterly, semi-annual, or annual)"
-                    ),
-                    None,
-                ))
             }
         }
     }};
@@ -463,15 +456,15 @@ impl TimeValueServer {
     fn rate_effective_annual(
         &self,
         Parameters(input): Parameters<RateEffectiveAnnualInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let value = dispatch_periodicity!(input.periodicity.as_str(), P => {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
+        let value = dispatch_periodicity!(input.periodicity, P => {
             Rate::<P>::new(input.rate)
                 .map_err(tvm)?
                 .effective_annual()
                 .map_err(tvm)?
                 .value()
         });
-        Ok(result("rate_effective_annual", value))
+        Ok(Json(ScalarResult::new(value)))
     }
 
     #[tool(
@@ -481,14 +474,14 @@ impl TimeValueServer {
     fn rate_convert(
         &self,
         Parameters(input): Parameters<RateConvertInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let value = dispatch_periodicity!(input.from.as_str(), P => {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
+        let value = dispatch_periodicity!(input.from, P => {
             let source = Rate::<P>::new(input.rate).map_err(tvm)?;
-            dispatch_periodicity!(input.to.as_str(), Q => {
+            dispatch_periodicity!(input.to, Q => {
                 source.convert::<Q>().map_err(tvm)?.value()
             })
         });
-        Ok(result("rate_convert", value))
+        Ok(Json(ScalarResult::new(value)))
     }
 
     #[tool(
@@ -498,13 +491,13 @@ impl TimeValueServer {
     fn rate_from_nominal(
         &self,
         Parameters(input): Parameters<RateFromNominalInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let value = dispatch_periodicity!(input.periodicity.as_str(), P => {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
+        let value = dispatch_periodicity!(input.periodicity, P => {
             Rate::<P>::from_nominal_annual(input.nominal)
                 .map_err(tvm)?
                 .value()
         });
-        Ok(result("rate_from_nominal", value))
+        Ok(Json(ScalarResult::new(value)))
     }
 
     #[tool(
@@ -514,14 +507,14 @@ impl TimeValueServer {
     fn rate_nominal(
         &self,
         Parameters(input): Parameters<RateEffectiveAnnualInput>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let value = dispatch_periodicity!(input.periodicity.as_str(), P => {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
+        let value = dispatch_periodicity!(input.periodicity, P => {
             Rate::<P>::new(input.rate)
                 .map_err(tvm)?
                 .nominal_annual()
                 .map_err(tvm)?
         });
-        Ok(result("rate_nominal", value))
+        Ok(Json(ScalarResult::new(value)))
     }
 
     #[tool(
@@ -671,15 +664,6 @@ fn dated_flows(flows: &[DatedFlow], currency: Currency) -> Result<Vec<DatedCashf
         out.push(DatedCashflow::new(offset_years, money(flow.amount, currency)?).map_err(tvm)?);
     }
     Ok(out)
-}
-
-/// A single-field structured tool result, keyed by the operation — for a
-/// non-monetary value (a rate or a period count). Still used by the `rate_*`
-/// tools pending their own typed-output conversion (ADR-0039).
-fn result(label: &str, value: f64) -> CallToolResult {
-    let mut object = serde_json::Map::new();
-    object.insert(label.to_owned(), serde_json::json!(value));
-    CallToolResult::structured(serde_json::Value::Object(object))
 }
 
 /// Map a library error to an MCP `invalid_params` error — every `TvmError` here
