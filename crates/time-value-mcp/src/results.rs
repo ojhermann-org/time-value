@@ -14,7 +14,7 @@
 
 use schemars::JsonSchema;
 use serde::Serialize;
-use time_value::{Currency, Money};
+use time_value::{amortization::Installment, Currency, Money};
 
 /// A monetary tool result: a numeric magnitude and — when the amount is not
 /// currency-agnostic (`XXX`) — the ISO 4217 code it is denominated in. The
@@ -56,5 +56,60 @@ impl ScalarResult {
     /// A bare numeric result.
     pub(crate) fn new(value: f64) -> Self {
         Self { value }
+    }
+}
+
+/// One row of an amortization schedule: the period index and the payment split
+/// into interest and principal, with the balance remaining after it. The amounts
+/// are plain magnitudes — the whole schedule shares one currency, echoed once on
+/// [`ScheduleResult`] rather than repeated per row.
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct ScheduleRow {
+    /// The 1-based period this installment falls in.
+    pub period: u32,
+    /// The total payment made this period.
+    pub payment: f64,
+    /// The portion of the payment that services interest.
+    pub interest: f64,
+    /// The portion of the payment that retires principal.
+    pub principal: f64,
+    /// The outstanding balance after this payment.
+    pub balance: f64,
+}
+
+impl From<Installment> for ScheduleRow {
+    fn from(installment: Installment) -> Self {
+        Self {
+            period: installment.period,
+            payment: installment.payment.value(),
+            interest: installment.interest.value(),
+            principal: installment.principal.value(),
+            balance: installment.balance.value(),
+        }
+    }
+}
+
+/// A tabular tool result: the schedule rows and — when not currency-agnostic —
+/// the ISO 4217 code they are denominated in (the tabular analogue of
+/// [`MoneyResult`], ADR-0028 §4 as amended by ADR-0039).
+#[derive(Debug, Serialize, JsonSchema)]
+pub(crate) struct ScheduleResult {
+    /// The amortization schedule, one row per period until the balance is
+    /// retired.
+    pub schedule: Vec<ScheduleRow>,
+    /// The ISO 4217 currency code the amounts are denominated in (e.g. `USD`);
+    /// absent for currency-agnostic (`XXX`) amounts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub currency: Option<String>,
+}
+
+impl ScheduleResult {
+    /// Collect a schedule's rows, tagging them with `currency` unless it is the
+    /// agnostic `XXX`.
+    pub(crate) fn new(rows: impl IntoIterator<Item = Installment>, currency: Currency) -> Self {
+        Self {
+            schedule: rows.into_iter().map(ScheduleRow::from).collect(),
+            currency: (currency != Currency::Xxx).then(|| currency.code().to_owned()),
+        }
     }
 }
