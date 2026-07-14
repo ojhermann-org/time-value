@@ -236,3 +236,51 @@ fn single_sum_output_conforms_to_declared_schema() {
         },
     ]);
 }
+
+/// The annuity family: ordinary, the NPER/RATE solves, perpetuities, and the
+/// annuity-due forms.
+#[test]
+fn annuity_output_conforms_to_declared_schema() {
+    check_conformance(&[
+        Case {
+            tool: "annuity_present_value",
+            args: json!({"rate":0.01,"periods":12,"payment":100,"currency":"USD"}),
+        },
+        Case {
+            tool: "annuity_future_value",
+            args: json!({"rate":0.01,"periods":12,"payment":100}),
+        },
+        Case {
+            tool: "annuity_payment",
+            args: json!({"rate":0.01,"periods":12,"present":1000,"currency":"GBP"}),
+        },
+        Case {
+            tool: "annuity_periods",
+            args: json!({"rate":0.01,"payment":100,"present":1000}),
+        },
+        Case {
+            tool: "annuity_rate",
+            args: json!({"periods":12,"payment":100,"present":1000}),
+        },
+        Case {
+            tool: "annuity_perpetuity",
+            args: json!({"rate":0.05,"payment":100,"currency":"JPY"}),
+        },
+        Case {
+            tool: "annuity_growing_perpetuity",
+            args: json!({"rate":0.05,"growth":0.02,"payment":100}),
+        },
+        Case {
+            tool: "annuity_due_present_value",
+            args: json!({"rate":0.01,"periods":12,"payment":100}),
+        },
+        Case {
+            tool: "annuity_due_future_value",
+            args: json!({"rate":0.01,"periods":12,"payment":100}),
+        },
+        Case {
+            tool: "annuity_due_payment",
+            args: json!({"rate":0.01,"periods":12,"present":1000}),
+        },
+    ]);
+}

@@ -285,16 +285,15 @@ impl TimeValueServer {
     fn annuity_present_value(
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = annuity::present_value(
+        let money = annuity::present_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.payment, currency)?,
         )
-        .map_err(tvm)?
-        .value();
-        Ok(result_money("annuity_present_value", value, currency))
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -304,16 +303,15 @@ impl TimeValueServer {
     fn annuity_future_value(
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = annuity::future_value(
+        let money = annuity::future_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.payment, currency)?,
         )
-        .map_err(tvm)?
-        .value();
-        Ok(result_money("annuity_future_value", value, currency))
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -323,7 +321,7 @@ impl TimeValueServer {
     fn annuity_payment(
         &self,
         Parameters(input): Parameters<AnnuityPaymentInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let payment = annuity::payment(
             rate(input.rate)?,
@@ -331,7 +329,7 @@ impl TimeValueServer {
             money(input.present, currency)?,
         )
         .map_err(tvm)?;
-        Ok(result_money("annuity_payment", payment.value(), currency))
+        Ok(Json(payment.into()))
     }
 
     #[tool(
@@ -341,7 +339,7 @@ impl TimeValueServer {
     fn annuity_periods(
         &self,
         Parameters(input): Parameters<AnnuityPeriodsInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let r = rate(input.rate)?;
         let pmt = money(input.payment, currency)?;
@@ -350,7 +348,7 @@ impl TimeValueServer {
             Anchor::Future(f) => annuity::periods_from_future(r, pmt, money(f, currency)?),
         }
         .map_err(tvm)?;
-        Ok(result("annuity_periods", periods.value()))
+        Ok(Json(ScalarResult::new(periods.value())))
     }
 
     #[tool(
@@ -360,7 +358,7 @@ impl TimeValueServer {
     fn annuity_rate(
         &self,
         Parameters(input): Parameters<AnnuityRateInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let n = period(input.periods)?;
         let pmt = money(input.payment, currency)?;
@@ -369,7 +367,7 @@ impl TimeValueServer {
             Anchor::Future(f) => annuity::rate_from_future::<Monthly>(n, pmt, money(f, currency)?),
         }
         .map_err(tvm)?;
-        Ok(result("annuity_rate", solved.value()))
+        Ok(Json(ScalarResult::new(solved.value())))
     }
 
     #[tool(
@@ -379,12 +377,11 @@ impl TimeValueServer {
     fn annuity_perpetuity(
         &self,
         Parameters(input): Parameters<PerpetuityInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = annuity::perpetuity(rate(input.rate)?, money(input.payment, currency)?)
-            .map_err(tvm)?
-            .value();
-        Ok(result_money("annuity_perpetuity", value, currency))
+        let money =
+            annuity::perpetuity(rate(input.rate)?, money(input.payment, currency)?).map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -394,16 +391,15 @@ impl TimeValueServer {
     fn annuity_growing_perpetuity(
         &self,
         Parameters(input): Parameters<GrowingPerpetuityInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = annuity::growing_perpetuity(
+        let money = annuity::growing_perpetuity(
             rate(input.rate)?,
             rate(input.growth)?,
             money(input.payment, currency)?,
         )
-        .map_err(tvm)?
-        .value();
-        Ok(result_money("annuity_growing_perpetuity", value, currency))
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -413,16 +409,15 @@ impl TimeValueServer {
     fn annuity_due_present_value(
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = annuity::due::present_value(
+        let money = annuity::due::present_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.payment, currency)?,
         )
-        .map_err(tvm)?
-        .value();
-        Ok(result_money("annuity_due_present_value", value, currency))
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -432,16 +427,15 @@ impl TimeValueServer {
     fn annuity_due_future_value(
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
-        let value = annuity::due::future_value(
+        let money = annuity::due::future_value(
             rate(input.rate)?,
             period(input.periods)?,
             money(input.payment, currency)?,
         )
-        .map_err(tvm)?
-        .value();
-        Ok(result_money("annuity_due_future_value", value, currency))
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -451,7 +445,7 @@ impl TimeValueServer {
     fn annuity_due_payment(
         &self,
         Parameters(input): Parameters<AnnuityPaymentInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let payment = annuity::due::payment(
             rate(input.rate)?,
@@ -459,11 +453,7 @@ impl TimeValueServer {
             money(input.present, currency)?,
         )
         .map_err(tvm)?;
-        Ok(result_money(
-            "annuity_due_payment",
-            payment.value(),
-            currency,
-        ))
+        Ok(Json(payment.into()))
     }
 
     #[tool(
@@ -684,23 +674,11 @@ fn dated_flows(flows: &[DatedFlow], currency: Currency) -> Result<Vec<DatedCashf
 }
 
 /// A single-field structured tool result, keyed by the operation — for a
-/// non-monetary value (a rate or a period count).
+/// non-monetary value (a rate or a period count). Still used by the `rate_*`
+/// tools pending their own typed-output conversion (ADR-0039).
 fn result(label: &str, value: f64) -> CallToolResult {
     let mut object = serde_json::Map::new();
     object.insert(label.to_owned(), serde_json::json!(value));
-    CallToolResult::structured(serde_json::Value::Object(object))
-}
-
-/// A monetary tool result — the value keyed by the operation, plus a `currency`
-/// field when `currency` is not `Xxx` (so agnostic results keep their old shape).
-/// The result is denominated in the same currency as the inputs, which the
-/// operations preserve.
-fn result_money(label: &str, value: f64, currency: Currency) -> CallToolResult {
-    let mut object = serde_json::Map::new();
-    object.insert(label.to_owned(), serde_json::json!(value));
-    if currency != Currency::Xxx {
-        object.insert("currency".to_owned(), serde_json::json!(currency.code()));
-    }
     CallToolResult::structured(serde_json::Value::Object(object))
 }
 
