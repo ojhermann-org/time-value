@@ -53,6 +53,12 @@
 //! conversion ([`Rate::from_nominal_annual`] / [`Rate::nominal_annual`]) is plain
 //! arithmetic and needs no feature.
 //!
+//! The optional `serde` feature (off by default, `no_std`-compatible) derives
+//! `Serialize`/`Deserialize` for the public value types — bare numbers for the
+//! newtypes, `{ amount, currency }` for [`Money`], the ISO 4217 code for
+//! [`Currency`] — validating through the fallible constructors on the way in
+//! (`docs/adr/0042-serde-support.md`).
+//!
 //! ```
 //! use time_value::{Cashflows, Money, Monthly, Rate};
 //!
@@ -109,6 +115,12 @@ mod math;
 mod period;
 #[cfg(any(feature = "std", feature = "libm"))]
 pub mod single_sum;
+
+// `serde` support for the public value types, behind the off-by-default feature
+// (ADR-0042). The impls compose from the types' public API, so this is a leaf
+// module with nothing re-exported.
+#[cfg(feature = "serde")]
+mod serde_impls;
 
 pub use amortization::{Installment, Schedule};
 #[cfg(any(feature = "std", feature = "libm"))]

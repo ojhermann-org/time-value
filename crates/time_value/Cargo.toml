@@ -35,12 +35,23 @@ std = []
 # operations work without `std` (ADR-0009). The default build (NPV/NFV/IRR) is
 # arithmetic-only and needs neither `std` nor `libm`.
 libm = ["dep:libm"]
+# `Serialize`/`Deserialize` for the public value types, off by default so the
+# core stays dependency-free (ADR-0042). The dep is `no_std`-compatible
+# (`default-features = false`), so `serde` composes with the default `no_std`
+# build; deserialization routes through the fallible constructors, so an
+# out-of-domain value is rejected, not silently accepted.
+serde = ["dep:serde"]
 
 [dependencies]
 libm = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Property-based tests (tests/properties.rs). Dev-only, so it never enters the
 # published crate's dependency tree — the zero-dependency promise is about what
 # a downstream user pulls in (ADR-0009), not the test harness.
 proptest = { workspace = true }
+# Exercises the `serde` feature's wire format (tests/serde.rs, gated on the
+# feature). Dev-only — `serde_json` is `std`, but the round-trip tests run under
+# `std` anyway; the shipped `serde` support itself stays `no_std`.
+serde_json = { workspace = true }
