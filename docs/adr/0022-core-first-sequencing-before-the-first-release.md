@@ -1,10 +1,15 @@
 # ADR-0022: Complete the core before the first release (core-first sequencing)
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR-0038](0038-no-scheduled-release-continuous-development.md)
 - **Date:** 2026-07-08
 - **Deciders:** Project owner
 - **Amends:** [ADR-0012](0012-ci-and-release-automation.md) (its release sequencing), [ADR-0019](0019-1.0-public-api-decisions.md) (its "publishing 1.0.0 fixes the API" premise)
 - **Related:** [ADR-0021](0021-fallible-operations-on-non-finite-results.md)
+
+> **Superseded (2026-07-14) by [ADR-0038](0038-no-scheduled-release-continuous-development.md).**
+> There is no longer a scheduled release: the project is developed continuously and
+> a release is an undated future decision, so the `1.0.0`-together sequencing,
+> milestones, and "Road to 1.0.0" epic below no longer apply. Retained as history.
 
 ## Context
 
