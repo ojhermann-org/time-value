@@ -340,6 +340,22 @@ pub(crate) struct AnnuityValueInput {
     pub currency: Option<CurrencyCode>,
 }
 
+/// Input for the `convert` tool (foreign-exchange). The amount is denominated in
+/// `from`; the result is in `to`. Unlike the amount-bearing tools, currency is
+/// intrinsic here, so `from`/`to` are required (not the optional `currency`
+/// field).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ConvertInput {
+    /// The amount to convert, denominated in `from`.
+    pub amount: f64,
+    /// The currency the amount is in (ISO 4217, e.g. `USD`).
+    pub from: CurrencyCode,
+    /// The currency to convert into (ISO 4217, e.g. `EUR`).
+    pub to: CurrencyCode,
+    /// Units of `to` per unit of `from` (must be finite and positive).
+    pub rate: f64,
+}
+
 /// Input for the `annuity_payment` tool.
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct AnnuityPaymentInput {

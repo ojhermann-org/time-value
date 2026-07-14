@@ -352,3 +352,68 @@ fn currency_input_advertises_the_code_enum() {
         .stdout(predicate::str::contains("CurrencyCode"))
         .stdout(predicate::str::contains("ZWG"));
 }
+
+// ---- Foreign exchange (the `convert` tool): ADR-0034/0037, #67 -----------
+
+#[test]
+fn convert_restates_an_amount_in_the_target_currency() {
+    // 100 USD at 0.9 USD->EUR = 90 EUR; the result is tagged the target code.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"convert","arguments":{"amount":100,"from":"USD","to":"EUR","rate":0.9}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"value\":90"))
+        .stdout(predicate::str::contains("\"currency\":\"EUR\""));
+}
+
+#[test]
+fn convert_is_listed_as_a_tool() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"convert\""));
+}
+
+#[test]
+fn convert_rejects_a_non_positive_rate() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"convert","arguments":{"amount":100,"from":"USD","to":"EUR","rate":0}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"error\""))
+        .stdout(predicate::str::contains("exchange rate"));
+}
+
+#[test]
+fn convert_rejects_an_unknown_currency_code() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"convert","arguments":{"amount":100,"from":"ZZZ","to":"EUR","rate":0.9}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("ZZZ"));
+}

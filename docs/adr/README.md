@@ -49,3 +49,13 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0028](0028-binary-surface-conventions.md) | Binary surface conventions (CLI grammar & MCP tools) | Accepted |
 | [0029](0029-dated-cashflows-xnpv-xirr.md) | Dated cashflows — XNPV / XIRR | Accepted (amended by 0030) |
 | [0030](0030-shared-day-count-support-crate.md) | Shared day-count support crate | Accepted |
+| [0031](0031-split-non-finite-result-into-overflow-and-undefined.md) | Split `NonFiniteResult` into `Overflow` and `Undefined` | Accepted |
+| [0032](0032-ergonomic-convenience-impls.md) | Ergonomic convenience impls (`ZERO` / `Default` / `TryFrom` / `From`) | Accepted |
+| [0033](0033-core-domain-model-two-axes-and-an-f64-engine.md) | Core domain model — two axes, and an `f64` computation engine | Accepted |
+| [0034](0034-money-and-currency.md) | Money and currency — `f64` magnitude, a runtime ISO-4217 enum, and FX | Accepted |
+| [0035](0035-periodicity-tagged-time.md) | Periodicity-tagged time (`Period<P>`) | Accepted |
+| [0036](0036-continuous-compounding-force-of-interest.md) | Continuous compounding — a periodicity-free force of interest | Accepted |
+| [0037](0037-currency-in-the-binaries.md) | Currency in the binaries — an opt-in code that is echoed, not rounded | Accepted |
+| [0038](0038-no-scheduled-release-continuous-development.md) | No scheduled release — continuous development | Accepted |
+| [0039](0039-typed-output-layer-for-the-binaries.md) | A typed output layer for the binaries — "types in, types out" | Accepted |
+| [0040](0040-fx-convert-in-the-binaries.md) | FX convert in the binaries — a standalone `convert` surface | Accepted |
