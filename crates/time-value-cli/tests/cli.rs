@@ -388,7 +388,10 @@ fn rate_rejects_an_unknown_periodicity() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("unknown periodicity"));
+        // Periodicity is a clap ValueEnum (ADR-0039): an unknown value is rejected
+        // by parsing, and the error lists the valid set.
+        .stderr(predicate::str::contains("fortnightly"))
+        .stderr(predicate::str::contains("semi-annual"));
 }
 
 #[test]
@@ -412,7 +415,9 @@ fn amortize_over_a_term_prints_a_table() {
 }
 
 #[test]
-fn amortize_json_is_an_array_of_rows() {
+fn amortize_json_is_a_schedule_object() {
+    // The typed output layer (ADR-0039) wraps the rows in `{ "schedule": [...] }`,
+    // the uniform tabular shape; the rows themselves are unchanged.
     time_value()
         .args([
             "--json",
@@ -426,7 +431,7 @@ fn amortize_json_is_an_array_of_rows() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::starts_with("[{"))
+        .stdout(predicate::str::starts_with("{\"schedule\":[{"))
         .stdout(predicate::str::contains("\"period\":1"))
         .stdout(predicate::str::contains("\"balance\":0"));
 }
@@ -459,75 +464,66 @@ fn amortize_rejects_a_non_amortizing_payment() {
 }
 
 #[test]
-fn json_output_is_keyed_by_operation() {
+fn json_output_uses_the_uniform_value_key() {
+    // ADR-0039: the scalar `--json` shape is `{ "value": … }`, uniform across the
+    // families (the operation is already named by the command), replacing the old
+    // per-operation key.
     time_value()
         .args([
             "--json", "series", "npv", "--rate", "0.01", "-100", "60", "60",
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"npv\""));
+        .stdout(predicate::str::contains("\"value\""))
+        .stdout(predicate::str::contains("\"npv\"").not());
 }
 
 #[test]
-fn json_keys_match_the_mcp_tool_names() {
-    // ADR-0028 §4: the `--json` key is the operation's MCP tool name, so the two
-    // binary surfaces agree. Bare acronyms (`npv`) stay bare; every other key is
-    // family-prefixed and spelled out.
-    let cases: &[(&[&str], &str)] = &[
-        (
-            &[
-                "single-sum",
-                "pv",
-                "--rate",
-                "0.01",
-                "--periods",
-                "12",
-                "--future",
-                "1000",
-            ],
-            "\"single_sum_present_value\"",
-        ),
-        (
-            &[
-                "annuity",
-                "pv",
-                "--rate",
-                "0.01",
-                "--periods",
-                "12",
-                "--payment",
-                "100",
-            ],
-            "\"annuity_present_value\"",
-        ),
-        (
-            &[
-                "annuity",
-                "due",
-                "pv",
-                "--rate",
-                "0.01",
-                "--periods",
-                "12",
-                "--payment",
-                "100",
-            ],
-            "\"annuity_due_present_value\"",
-        ),
-        (
-            &["rate", "ear", "--rate", "0.01", "--periodicity", "monthly"],
-            "\"rate_effective_annual\"",
-        ),
+fn json_scalar_shape_is_uniform_across_families() {
+    // Every scalar operation, across every family, emits the same `{ "value": … }`
+    // object under `--json` (ADR-0028 §4 as amended by ADR-0039).
+    let cases: &[&[&str]] = &[
+        &[
+            "single-sum",
+            "pv",
+            "--rate",
+            "0.01",
+            "--periods",
+            "12",
+            "--future",
+            "1000",
+        ],
+        &[
+            "annuity",
+            "pv",
+            "--rate",
+            "0.01",
+            "--periods",
+            "12",
+            "--payment",
+            "100",
+        ],
+        &[
+            "annuity",
+            "due",
+            "pv",
+            "--rate",
+            "0.01",
+            "--periods",
+            "12",
+            "--payment",
+            "100",
+        ],
+        &["rate", "ear", "--rate", "0.01", "--periodicity", "monthly"],
     ];
-    for (op_args, expected_key) in cases {
+    for op_args in cases {
         let mut args = vec!["--json"];
         args.extend_from_slice(op_args);
         time_value()
             .args(&args)
             .assert()
             .success()
-            .stdout(predicate::str::contains(*expected_key));
+            .stdout(predicate::str::contains("\"value\""));
     }
 }
 
