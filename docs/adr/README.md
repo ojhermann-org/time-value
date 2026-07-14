@@ -61,3 +61,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0040](0040-fx-convert-in-the-binaries.md) | FX convert in the binaries — a standalone `convert` surface | Accepted |
 | [0041](0041-continuous-compounding-in-the-binaries.md) | Continuous compounding in the binaries — a `continuous` family | Accepted |
 | [0042](0042-serde-support.md) | `serde` support — an optional, validating wire format | Accepted (amends 0019) |
+| [0043](0043-owned-cashflows.md) | Owned cashflows — `OwnedCashflows` behind an `alloc` feature | Accepted |

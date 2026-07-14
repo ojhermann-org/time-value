@@ -69,6 +69,11 @@ jobs:
       - name: Clippy (no_std + serde)
         run: nix develop -c cargo clippy -p time_value --no-default-features --features serde --all-targets -- -D warnings
 
+      # The owned `OwnedCashflows` (alloc) must compile no_std too — with libm so
+      # its transcendental `mirr` forward is built without std (ADR-0043).
+      - name: Clippy (no_std + alloc + libm)
+        run: nix develop -c cargo clippy -p time_value --no-default-features --features alloc,libm --all-targets -- -D warnings
+
       # `--all-features` so feature-gated operations (and their tests) are
       # exercised, not just compiled.
       - name: Test

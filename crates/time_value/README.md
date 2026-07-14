@@ -56,8 +56,9 @@ let irr = project.internal_rate_of_return()?;  // ≈ 0.1307 per month
 
 | Feature | Default | Effect |
 |---------|:-------:|--------|
-| `std`   |    no   | Use `std` for the transcendental math (`f64::powf`). |
+| `std`   |    no   | Use `std` for the transcendental math (`f64::powf`). Implies `alloc`. |
 | `libm`  |    no   | Provide that math via [`libm`] instead, so the single-sum and annuity operations work in a `no_std` build. |
+| `alloc` |    no   | The owned `OwnedCashflows` series (build from a `Vec` or an iterator), complementing the borrowed, allocation-free `Cashflows`. `no_std`-compatible; implied by `std`. |
 | `serde` |    no   | Derive `Serialize`/`Deserialize` for the public value types (`Rate`/`Period`/`ContinuousRate` as bare numbers, `Money` as `{ amount, currency }`, `Currency` as its ISO 4217 code, plus `FxRate`/`DatedCashflow`/`Installment`). `no_std`-compatible; deserialization validates through the fallible constructors. |
 
 [`libm`]: https://crates.io/crates/libm
