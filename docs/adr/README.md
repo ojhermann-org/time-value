@@ -59,3 +59,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0038](0038-no-scheduled-release-continuous-development.md) | No scheduled release — continuous development | Accepted |
 | [0039](0039-typed-output-layer-for-the-binaries.md) | A typed output layer for the binaries — "types in, types out" | Accepted |
 | [0040](0040-fx-convert-in-the-binaries.md) | FX convert in the binaries — a standalone `convert` surface | Accepted |
+| [0041](0041-continuous-compounding-in-the-binaries.md) | Continuous compounding in the binaries — a `continuous` family | Accepted |

@@ -7,10 +7,13 @@
 //! and the solve-for `nper`/`rate` inverses), `annuity` (ordinary, annuity-`due`,
 //! and perpetuity forms, plus the `nper`/`rate` solves), `rate` (conversions
 //! between periodicities and nominal/effective quotes — the only family that
-//! takes a periodicity), `amortize` (a schedule), and the standalone `convert`
-//! (foreign-exchange: restate an amount in another currency at a caller-supplied
-//! rate — ADR-0034/0037, #67). `--rate` is a per-period
-//! rate (annual for the dated `series xnpv`/`xirr`); cashflows are positional.
+//! takes a periodicity), `continuous` (continuous compounding at a force of
+//! interest — `fv`/`pv` over a real-number `years` span, plus the
+//! effective-annual bridge; ADR-0036/0041, #68), `amortize` (a schedule), and the
+//! standalone `convert` (foreign-exchange: restate an amount in another currency
+//! at a caller-supplied rate — ADR-0034/0037, #67). `--rate` is a per-period
+//! rate (annual for the dated `series xnpv`/`xirr`, a force of interest for
+//! `continuous`); cashflows are positional.
 //! Most results print as a plain number, or as a `{ "value": … }` JSON object
 //! with `--json` (ADR-0039); `amortize` prints a table, or a
 //! `{ "schedule": [ … ] }` JSON object under `--json`. A global
@@ -23,8 +26,8 @@ mod results;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use time_value::{
-    amortization, annuity, single_sum, Annual, Cashflows, Currency, DatedCashflow, DatedCashflows,
-    FxRate, Money, Monthly, Period, Rate,
+    amortization, annuity, continuous, single_sum, Annual, Cashflows, ContinuousRate, Currency,
+    DatedCashflow, DatedCashflows, FxRate, Money, Monthly, Period, Rate,
 };
 use time_value_daycount::{act365_year_fraction, iso_to_day};
 
@@ -70,6 +73,12 @@ enum Command {
     Rate {
         #[command(subcommand)]
         command: RateCommand,
+    },
+    /// Continuous compounding: future/present value at a force of interest over a
+    /// real-number span of years, plus the effective-annual rate bridge.
+    Continuous {
+        #[command(subcommand)]
+        command: ContinuousCommand,
     },
     /// Amortization schedule: one row per period until the balance is retired.
     Amortize {
@@ -400,6 +409,53 @@ enum RateCommand {
     },
 }
 
+/// Continuous-compounding operations (ADR-0036). `--rate` is the force of interest
+/// δ; `--years` is a real-number span (it may be fractional or negative), not a
+/// period count. The `fv`/`pv` amounts honour the global `--currency`; the rate
+/// bridges (`from-effective`/`effective`) are pure rates and carry none.
+#[derive(Subcommand)]
+enum ContinuousCommand {
+    /// Future value grown continuously: `FV = PV · e^(δ · years)`.
+    Fv {
+        /// The force of interest δ (e.g. 0.05 for a 5% continuously compounded
+        /// annual rate).
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The span in years (continuous; may be fractional or negative).
+        #[arg(long, allow_hyphen_values = true)]
+        years: f64,
+        /// The present amount to grow.
+        #[arg(long, allow_hyphen_values = true)]
+        present: f64,
+    },
+    /// Present value discounted continuously: `PV = FV · e^(−δ · years)`.
+    Pv {
+        /// The force of interest δ.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The span in years (continuous; may be fractional or negative).
+        #[arg(long, allow_hyphen_values = true)]
+        years: f64,
+        /// The future amount to discount.
+        #[arg(long, allow_hyphen_values = true)]
+        future: f64,
+    },
+    /// The force of interest δ equivalent to an effective annual rate:
+    /// `δ = ln(1 + r)`.
+    FromEffective {
+        /// The effective annual rate (e.g. 0.05 for 5% EAR).
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+    },
+    /// The effective annual rate equivalent to a force of interest:
+    /// `r = e^δ − 1`.
+    Effective {
+        /// The force of interest δ.
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+    },
+}
+
 // The periodicity tag does not affect any result for the period-indexed
 // operations (ADR-0010); the CLI fixes it to one marker to satisfy the type
 // parameter. The dated `series xnpv`/`xirr` are intrinsically annual (ADR-0029).
@@ -464,6 +520,12 @@ fn rate(value: f64) -> Result<Rate<Per>> {
 
 fn annual_rate(value: f64) -> Result<Rate<Annual>> {
     Rate::new(value).context("invalid rate (must be finite and greater than -100%)")
+}
+
+/// A force of interest δ for the `continuous` family. Unlike a per-period [`Rate`],
+/// every finite force is valid — there is no `> −100%` floor (ADR-0036).
+fn continuous_rate(value: f64) -> Result<ContinuousRate> {
+    ContinuousRate::new(value).context("invalid force of interest (must be finite)")
 }
 
 fn period(value: f64) -> Result<Period<Per>> {
@@ -815,6 +877,7 @@ fn run_scalar(command: Command, currency: Currency) -> Result<ScalarOutput> {
         Command::Annuity { command } => run_annuity(command, currency),
         // The `rate` family takes no monetary amounts, so currency does not apply.
         Command::Rate { command } => run_rate(&command),
+        Command::Continuous { command } => run_continuous(command, currency),
         // `convert` names its own currencies (`--from`/`--to`); the global
         // `--currency` does not apply.
         Command::Convert {
@@ -825,6 +888,39 @@ fn run_scalar(command: Command, currency: Currency) -> Result<ScalarOutput> {
         } => run_convert(from, to, r, amount),
         Command::Amortize { .. } => unreachable!("amortize is handled by run_amortize"),
     }
+}
+
+/// Dispatch the `continuous` subcommands (ADR-0036/0041, #68). `fv`/`pv` are
+/// monetary and honour the global `--currency`; the rate bridges are pure rates.
+#[allow(clippy::needless_pass_by_value)]
+fn run_continuous(command: ContinuousCommand, currency: Currency) -> Result<ScalarOutput> {
+    Ok(match command {
+        ContinuousCommand::Fv {
+            rate: r,
+            years,
+            present,
+        } => money_out(
+            continuous::future_value(continuous_rate(r)?, years, money(present, currency)?)
+                .context("continuous future value is undefined for these inputs")?,
+        ),
+        ContinuousCommand::Pv {
+            rate: r,
+            years,
+            future,
+        } => money_out(
+            continuous::present_value(continuous_rate(r)?, years, money(future, currency)?)
+                .context("continuous present value is undefined for these inputs")?,
+        ),
+        ContinuousCommand::FromEffective { rate: r } => {
+            plain_out(ContinuousRate::from_effective_annual(annual_rate(r)?).value())
+        }
+        ContinuousCommand::Effective { rate: r } => {
+            let r_eff = continuous_rate(r)?
+                .effective_annual()
+                .context("effective annual rate is undefined for this force of interest")?;
+            plain_out(r_eff.value())
+        }
+    })
 }
 
 /// Convert an amount from one currency into another at a caller-supplied FX rate

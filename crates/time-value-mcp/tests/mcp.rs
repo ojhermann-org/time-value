@@ -417,3 +417,78 @@ fn convert_rejects_an_unknown_currency_code() {
         .success()
         .stdout(predicate::str::contains("ZZZ"));
 }
+
+// ---- Continuous compounding (the `continuous_*` tools): ADR-0036/0041, #68
+
+#[test]
+fn continuous_future_value_grows_and_echoes_currency() {
+    // 1000 at δ=0.05 over 3y ≈ 1161.83, tagged USD.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"continuous_future_value","arguments":{"rate":0.05,"years":3,"amount":1000,"currency":"USD"}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1161.83"))
+        .stdout(predicate::str::contains("\"currency\":\"USD\""));
+}
+
+#[test]
+fn continuous_present_value_inverts_future_value() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"continuous_present_value","arguments":{"rate":0.05,"years":3,"amount":1000}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("860.7"));
+}
+
+#[test]
+fn continuous_bridge_tools_round_trip_and_are_listed() {
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"continuous_from_effective","arguments":{"rate":0.05}}}"#,
+        "\n",
+        r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"continuous_effective","arguments":{"rate":0.05}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"continuous_future_value\""))
+        .stdout(predicate::str::contains("\"continuous_effective\""))
+        // δ = ln(1.05) ≈ 0.04879, and e^0.05 − 1 ≈ 0.05127.
+        .stdout(predicate::str::contains("0.04879"))
+        .stdout(predicate::str::contains("0.05127"));
+}
+
+#[test]
+fn continuous_rejects_a_non_finite_force() {
+    // JSON has no infinity literal; a force is rejected only when non-finite,
+    // which the amount value cannot express — so exercise the amount overflow
+    // path instead: an enormous growth factor overflows to a `TvmError`.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"continuous_future_value","arguments":{"rate":700,"years":2,"amount":1e300}}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"error\""));
+}

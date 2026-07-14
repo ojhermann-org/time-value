@@ -746,3 +746,118 @@ fn convert_rejects_an_unknown_currency_code() {
         .failure()
         .stderr(predicate::str::contains("ZZZ"));
 }
+
+// ---- Continuous compounding (continuous): ADR-0036/0041, #68 -------------
+
+#[test]
+fn continuous_future_value_grows_at_the_force_of_interest() {
+    // 1000 at δ=0.05 over 3y = 1000·e^0.15 ≈ 1161.83.
+    time_value()
+        .args([
+            "continuous",
+            "fv",
+            "--rate",
+            "0.05",
+            "--years",
+            "3",
+            "--present",
+            "1000",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("1161.83"));
+}
+
+#[test]
+fn continuous_present_value_inverts_future_value() {
+    // The inverse of the fv above: 1000·e^-0.15 ≈ 860.71.
+    time_value()
+        .args([
+            "continuous",
+            "pv",
+            "--rate",
+            "0.05",
+            "--years",
+            "3",
+            "--future",
+            "1000",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("860.7"));
+}
+
+#[test]
+fn continuous_value_echoes_the_currency() {
+    time_value()
+        .args([
+            "--currency",
+            "USD",
+            "continuous",
+            "fv",
+            "--rate",
+            "0.05",
+            "--years",
+            "3",
+            "--present",
+            "1000",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("USD"));
+}
+
+#[test]
+fn continuous_from_effective_is_the_log_bridge() {
+    // δ = ln(1 + 0.05) ≈ 0.048790.
+    time_value()
+        .args(["continuous", "from-effective", "--rate", "0.05"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.04879"));
+}
+
+#[test]
+fn continuous_effective_inverts_from_effective() {
+    // r = e^0.05 − 1 ≈ 0.051271.
+    time_value()
+        .args(["continuous", "effective", "--rate", "0.05"])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("0.05127"));
+}
+
+#[test]
+fn continuous_effective_carries_no_currency() {
+    // The bridge is a rate, not money — the currency does not apply.
+    time_value()
+        .args([
+            "--currency",
+            "USD",
+            "continuous",
+            "effective",
+            "--rate",
+            "0.05",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("USD").not());
+}
+
+#[test]
+fn continuous_rejects_a_non_finite_force() {
+    time_value()
+        .args([
+            "continuous",
+            "fv",
+            "--rate",
+            "inf",
+            "--years",
+            "3",
+            "--present",
+            "1000",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("force of interest"));
+}
