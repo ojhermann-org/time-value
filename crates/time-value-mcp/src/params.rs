@@ -5,48 +5,15 @@
 //! comments become the schema descriptions. Keeping the parsing here leaves the
 //! library's typed core untouched (ADR-0011).
 
-use std::borrow::Cow;
-
-use schemars::{JsonSchema, Schema, SchemaGenerator};
+use schemars::JsonSchema;
 use serde::Deserialize;
 use time_value::Currency;
 
-/// An ISO 4217 currency code accepted as a tool input.
-///
-/// It **deserializes as a plain string**, so an unknown code is rejected by our
-/// own resolver with the friendly "unknown ISO 4217 currency code" message rather
-/// than a serde "unknown variant" listing ~180 codes. But its **schema advertises
-/// the full closed set** as a string `enum`, generated from the core
-/// [`Currency::ALL`] table, so a consumer discovers the valid codes without a
-/// second hand-maintained list (ADR-0039). It `Deref`s to `str` so call sites use
-/// it exactly like the `String` it replaced.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(transparent)]
-pub(crate) struct CurrencyCode(pub String);
-
-impl core::ops::Deref for CurrencyCode {
-    type Target = str;
-    fn deref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl JsonSchema for CurrencyCode {
-    fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("CurrencyCode")
-    }
-
-    fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
-        let codes: Vec<&str> = Currency::ALL.iter().map(|c| c.code()).collect();
-        Schema::try_from(serde_json::json!({
-            "type": "string",
-            "enum": codes,
-            "description": "An ISO 4217 currency code (e.g. `USD`). \
-                            Omit for currency-agnostic (`XXX`) amounts.",
-        }))
-        .expect("the currency-code schema is a valid JSON Schema object")
-    }
-}
+// The tool inputs take the core [`Currency`] directly: the core's `serde`
+// `Deserialize` resolves an ISO 4217 code via `from_code` (a friendly "unknown
+// ISO 4217 currency code" error), and its `schemars` `JsonSchema` advertises the
+// full code `enum` from `Currency::ALL` (ADR-0044). This replaces the former
+// `CurrencyCode` string newtype, which hand-wrote both halves in this crate.
 
 /// The compounding periodicity a `rate_*` tool operates at — the only place a
 /// periodicity is a runtime input (ADR-0028 §3). A closed set, so it is a typed
@@ -76,7 +43,7 @@ pub(crate) struct SeriesInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// A cashflow series and an optional solver guess — input for `irr`.
@@ -90,7 +57,7 @@ pub(crate) struct IrrInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 fn default_guess() -> f64 {
@@ -109,7 +76,7 @@ pub(crate) struct MirrInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// A single dated cashflow — an ISO date and a signed amount.
@@ -131,7 +98,7 @@ pub(crate) struct DatedSeriesInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Dated cashflows and an optional solver guess — input for `xirr`.
@@ -145,7 +112,7 @@ pub(crate) struct DatedIrrInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `single_sum_present_value` tool.
@@ -160,7 +127,7 @@ pub(crate) struct PresentValueInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `single_sum_future_value` tool.
@@ -175,7 +142,7 @@ pub(crate) struct FutureValueInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `single_sum_periods` tool (solve for the number of periods).
@@ -190,7 +157,7 @@ pub(crate) struct SingleSumPeriodsInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `single_sum_rate` tool (solve for the per-period rate).
@@ -205,7 +172,7 @@ pub(crate) struct SingleSumRateInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `annuity_periods` tool. Provide exactly one of `present` or
@@ -225,7 +192,7 @@ pub(crate) struct AnnuityPeriodsInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `annuity_rate` tool. Provide exactly one of `present` or
@@ -245,7 +212,7 @@ pub(crate) struct AnnuityRateInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `annuity_perpetuity` tool.
@@ -258,7 +225,7 @@ pub(crate) struct PerpetuityInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `annuity_growing_perpetuity` tool.
@@ -273,7 +240,7 @@ pub(crate) struct GrowingPerpetuityInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `rate_effective_annual` and `rate_nominal` tools.
@@ -322,7 +289,7 @@ pub(crate) struct AmortizeInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `annuity_present_value` and `annuity_future_value` tools.
@@ -337,7 +304,7 @@ pub(crate) struct AnnuityValueInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `continuous_future_value` and `continuous_present_value` tools.
@@ -356,7 +323,7 @@ pub(crate) struct ContinuousValueInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }
 
 /// Input for the `continuous_from_effective` and `continuous_effective` bridge
@@ -378,9 +345,9 @@ pub(crate) struct ConvertInput {
     /// The amount to convert, denominated in `from`.
     pub amount: f64,
     /// The currency the amount is in (ISO 4217, e.g. `USD`).
-    pub from: CurrencyCode,
+    pub from: Currency,
     /// The currency to convert into (ISO 4217, e.g. `EUR`).
-    pub to: CurrencyCode,
+    pub to: Currency,
     /// Units of `to` per unit of `from` (must be finite and positive).
     pub rate: f64,
 }
@@ -397,5 +364,5 @@ pub(crate) struct AnnuityPaymentInput {
     /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
     /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
     #[serde(default)]
-    pub currency: Option<CurrencyCode>,
+    pub currency: Option<Currency>,
 }

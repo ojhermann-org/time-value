@@ -57,8 +57,9 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0036](0036-continuous-compounding-force-of-interest.md) | Continuous compounding — a periodicity-free force of interest | Accepted |
 | [0037](0037-currency-in-the-binaries.md) | Currency in the binaries — an opt-in code that is echoed, not rounded | Accepted |
 | [0038](0038-no-scheduled-release-continuous-development.md) | No scheduled release — continuous development | Accepted |
-| [0039](0039-typed-output-layer-for-the-binaries.md) | A typed output layer for the binaries — "types in, types out" | Accepted |
+| [0039](0039-typed-output-layer-for-the-binaries.md) | A typed output layer for the binaries — "types in, types out" | Accepted (MCP `CurrencyCode` workaround retired by 0044) |
 | [0040](0040-fx-convert-in-the-binaries.md) | FX convert in the binaries — a standalone `convert` surface | Accepted |
 | [0041](0041-continuous-compounding-in-the-binaries.md) | Continuous compounding in the binaries — a `continuous` family | Accepted |
 | [0042](0042-serde-support.md) | `serde` support — an optional, validating wire format | Accepted (amends 0019) |
 | [0043](0043-owned-cashflows.md) | Owned cashflows — `OwnedCashflows` behind an `alloc` feature | Accepted |
+| [0044](0044-schemars-support.md) | `schemars` support — JsonSchema companion to the serde wire format | Accepted |

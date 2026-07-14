@@ -46,10 +46,16 @@ libm = ["dep:libm"]
 # build; deserialization routes through the fallible constructors, so an
 # out-of-domain value is rejected, not silently accepted.
 serde = ["dep:serde"]
+# `JsonSchema` for the public value types — the JSON-Schema companion to `serde`
+# (ADR-0044), off by default. Implies `alloc` (schemars builds its schemas with
+# `alloc`); the schema shapes track the `serde` wire format (ADR-0042). Composes
+# with a `no_std` build — the workspace dep drops schemars' own `std`.
+schemars = ["dep:schemars", "alloc"]
 
 [dependencies]
 libm = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Property-based tests (tests/properties.rs). Dev-only, so it never enters the

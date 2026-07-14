@@ -21,7 +21,10 @@ path = "src/main.rs"
 
 [dependencies]
 # `std` gives the transcendental math the single-sum / annuity operations need.
-time_value = { workspace = true, features = ["std"] }
+# `serde` + `schemars` let the tool inputs use the core `Currency` directly —
+# deserialized (via `from_code`) and schema'd (the ISO-code enum) by the core
+# (ADR-0044) — replacing this crate's former `CurrencyCode` newtype.
+time_value = { workspace = true, features = ["std", "serde", "schemars"] }
 # ACT/365 day-count for the dated-cashflow tools (XNPV/XIRR), shared with the CLI
 # binary (ADR-0030).
 time-value-daycount.workspace = true
@@ -31,7 +34,9 @@ serde_json.workspace = true
 # synchronous (ADR-0003); async is contained to this crate.
 rmcp.workspace = true
 tokio.workspace = true
-schemars.workspace = true
+# Re-add schemars' own `std` (the workspace dep drops it so the core can use
+# schemars `no_std`); the binary is `std` and rmcp expects the std impls.
+schemars = { workspace = true, features = ["std"] }
 serde.workspace = true
 
 [dev-dependencies]

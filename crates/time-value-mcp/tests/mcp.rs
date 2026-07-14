@@ -329,16 +329,18 @@ fn an_unknown_currency_code_is_an_error() {
         .unwrap()
         .write_stdin(session(calls))
         .assert()
-        .success() // process exits cleanly; the JSON-RPC response carries the error
-        .stdout(predicate::str::contains("error"))
+        .success() // process exits cleanly; the response carries the error
+        // An unknown code is now rejected at parameter deserialization by the core
+        // `Currency` serde impl (ADR-0044), with the friendly ISO-code message.
+        .stdout(predicate::str::contains("unknown ISO 4217 currency code"))
         .stdout(predicate::str::contains("ZZZ"));
 }
 
 #[test]
 fn currency_input_advertises_the_code_enum() {
-    // The `currency` input schema lists the ISO 4217 codes as a shared `enum`
-    // (ADR-0039), so a consumer discovers the valid set from tools/list. `ZWG`
-    // and the `CurrencyCode` `$defs` name only occur in that schema.
+    // The `currency` input schema lists the ISO 4217 codes as an `enum` — now the
+    // core `Currency`'s own JsonSchema (ADR-0044), inlined — so a consumer
+    // discovers the valid set from tools/list. `ZWG` only occurs in that enum.
     let calls = concat!(
         r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
         "\n",
@@ -349,7 +351,6 @@ fn currency_input_advertises_the_code_enum() {
         .write_stdin(session(calls))
         .assert()
         .success()
-        .stdout(predicate::str::contains("CurrencyCode"))
         .stdout(predicate::str::contains("ZWG"));
 }
 
