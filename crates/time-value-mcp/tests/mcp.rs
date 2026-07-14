@@ -333,3 +333,22 @@ fn an_unknown_currency_code_is_an_error() {
         .stdout(predicate::str::contains("error"))
         .stdout(predicate::str::contains("ZZZ"));
 }
+
+#[test]
+fn currency_input_advertises_the_code_enum() {
+    // The `currency` input schema lists the ISO 4217 codes as a shared `enum`
+    // (ADR-0039), so a consumer discovers the valid set from tools/list. `ZWG`
+    // and the `CurrencyCode` `$defs` name only occur in that schema.
+    let calls = concat!(
+        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}"#,
+        "\n",
+    );
+
+    Command::cargo_bin("time-value-mcp")
+        .unwrap()
+        .write_stdin(session(calls))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CurrencyCode"))
+        .stdout(predicate::str::contains("ZWG"));
+}
