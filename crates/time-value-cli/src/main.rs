@@ -7,7 +7,9 @@
 //! and the solve-for `nper`/`rate` inverses), `annuity` (ordinary, annuity-`due`,
 //! and perpetuity forms, plus the `nper`/`rate` solves), `rate` (conversions
 //! between periodicities and nominal/effective quotes — the only family that
-//! takes a periodicity), and `amortize` (a schedule). `--rate` is a per-period
+//! takes a periodicity), `amortize` (a schedule), and the standalone `convert`
+//! (foreign-exchange: restate an amount in another currency at a caller-supplied
+//! rate — ADR-0034/0037, #67). `--rate` is a per-period
 //! rate (annual for the dated `series xnpv`/`xirr`); cashflows are positional.
 //! Most results print as a plain number, or as a `{ "value": … }` JSON object
 //! with `--json` (ADR-0039); `amortize` prints a table, or a
@@ -22,7 +24,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use time_value::{
     amortization, annuity, single_sum, Annual, Cashflows, Currency, DatedCashflow, DatedCashflows,
-    Money, Monthly, Period, Rate,
+    FxRate, Money, Monthly, Period, Rate,
 };
 use time_value_daycount::{act365_year_fraction, iso_to_day};
 
@@ -83,6 +85,23 @@ enum Command {
         /// Amortise with this level payment (mutually exclusive with --periods).
         #[arg(long, allow_hyphen_values = true)]
         payment: Option<f64>,
+    },
+    /// Convert an amount into another currency at a caller-supplied exchange
+    /// rate (foreign exchange). The amount is denominated in `--from`; the result
+    /// is in `--to`. The global `--currency` flag does not apply here.
+    Convert {
+        /// The currency the amount is in (ISO 4217, e.g. `USD`).
+        #[arg(long, value_parser = parse_currency)]
+        from: Currency,
+        /// The currency to convert into (ISO 4217, e.g. `EUR`).
+        #[arg(long, value_parser = parse_currency)]
+        to: Currency,
+        /// Units of `--to` per unit of `--from` (must be finite and positive).
+        #[arg(long, allow_hyphen_values = true)]
+        rate: f64,
+        /// The amount to convert, denominated in `--from`.
+        #[arg(value_name = "AMOUNT", allow_hyphen_values = true)]
+        amount: f64,
     },
 }
 
@@ -796,8 +815,29 @@ fn run_scalar(command: Command, currency: Currency) -> Result<ScalarOutput> {
         Command::Annuity { command } => run_annuity(command, currency),
         // The `rate` family takes no monetary amounts, so currency does not apply.
         Command::Rate { command } => run_rate(&command),
+        // `convert` names its own currencies (`--from`/`--to`); the global
+        // `--currency` does not apply.
+        Command::Convert {
+            from,
+            to,
+            rate: r,
+            amount,
+        } => run_convert(from, to, r, amount),
         Command::Amortize { .. } => unreachable!("amortize is handled by run_amortize"),
     }
+}
+
+/// Convert an amount from one currency into another at a caller-supplied FX rate
+/// (ADR-0034/0037). The result is a monetary value tagged the `to` currency, so it
+/// echoes that code like any other monetary result. `FxRate::new` rejects a
+/// non-positive or non-finite rate; the multiply can overflow on an extreme input.
+fn run_convert(from: Currency, to: Currency, rate: f64, amount: f64) -> Result<ScalarOutput> {
+    let fx = FxRate::new(from, to, rate)
+        .context("invalid exchange rate (must be finite and greater than 0)")?;
+    let converted = money(amount, from)?
+        .convert(fx)
+        .context("converted amount is out of range")?;
+    Ok(money_out(converted))
 }
 
 /// Print an amortization schedule: aligned rows, or a `{ "schedule": [ … ] }`

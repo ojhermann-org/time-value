@@ -323,3 +323,19 @@ fn amortize_output_conforms_to_declared_schema() {
         },
     ]);
 }
+
+/// The standalone `convert` tool — a monetary result carrying the target
+/// currency (the result is never agnostic when `to` is a real code).
+#[test]
+fn convert_output_conforms_to_declared_schema() {
+    check_conformance(&[
+        Case {
+            tool: "convert",
+            args: json!({"amount":100,"from":"USD","to":"EUR","rate":0.9}),
+        },
+        Case {
+            tool: "convert",
+            args: json!({"amount":100,"from":"USD","to":"XXX","rate":0.9}),
+        },
+    ]);
+}

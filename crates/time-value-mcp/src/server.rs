@@ -15,16 +15,16 @@ use rmcp::{
 };
 use time_value::{
     amortization, annuity, single_sum, Annual, Cashflows, Currency, DatedCashflow, DatedCashflows,
-    Money, Monthly, Period, Rate, TvmError,
+    FxRate, Money, Monthly, Period, Rate, TvmError,
 };
 use time_value_daycount::{act365_year_fraction, iso_to_day};
 
 use crate::params::{
     AmortizeInput, AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput,
-    DatedFlow, DatedIrrInput, DatedSeriesInput, FutureValueInput, GrowingPerpetuityInput, IrrInput,
-    MirrInput, Periodicity, PerpetuityInput, PresentValueInput, RateConvertInput,
-    RateEffectiveAnnualInput, RateFromNominalInput, SeriesInput, SingleSumPeriodsInput,
-    SingleSumRateInput,
+    ConvertInput, DatedFlow, DatedIrrInput, DatedSeriesInput, FutureValueInput,
+    GrowingPerpetuityInput, IrrInput, MirrInput, Periodicity, PerpetuityInput, PresentValueInput,
+    RateConvertInput, RateEffectiveAnnualInput, RateFromNominalInput, SeriesInput,
+    SingleSumPeriodsInput, SingleSumRateInput,
 };
 use crate::results::{MoneyResult, ScalarResult, ScheduleResult};
 
@@ -80,7 +80,9 @@ Rate conversions: `rate_effective_annual` (EAR), `rate_convert` (between \
 periodicities), `rate_from_nominal` and `rate_nominal` (nominal/APR) — each takes \
 a periodicity (daily, weekly, monthly, quarterly, semi-annual, annual). \
 `amortize` returns a schedule (an array of period/payment/interest/principal/\
-balance rows) from a term or a level payment. Rates are per period (annual for \
+balance rows) from a term or a level payment. `convert` restates an amount in \
+another currency at a caller-supplied exchange rate (`amount`, `from`, `to`, \
+`rate` — units of `to` per unit of `from`). Rates are per period (annual for \
 `xnpv`/`xirr`); cashflows are signed (outflow negative). Every amount-bearing \
 tool accepts an optional `currency` (an ISO 4217 code, e.g. `USD`); it \
 denominates the amounts and is echoed on monetary results (omit for \
@@ -551,6 +553,24 @@ impl TimeValueServer {
         .map_err(tvm)?;
 
         Ok(Json(ScheduleResult::new(schedule, currency)))
+    }
+
+    #[tool(
+        name = "convert",
+        description = "Convert an amount into another currency at a caller-supplied exchange rate (foreign exchange): the amount is denominated in `from`, the result in `to`. `rate` is units of `to` per unit of `from` and must be finite and positive."
+    )]
+    fn convert(
+        &self,
+        Parameters(input): Parameters<ConvertInput>,
+    ) -> Result<Json<MoneyResult>, ErrorData> {
+        // `from`/`to` are required here (unlike the optional `currency` field), so
+        // there is no agnostic-`XXX` default — but resolving `XXX` explicitly stays
+        // valid (a caller may convert to/from the agnostic unit).
+        let from = resolve_currency(Some(input.from.0.as_str()))?;
+        let to = resolve_currency(Some(input.to.0.as_str()))?;
+        let fx = FxRate::new(from, to, input.rate).map_err(tvm)?;
+        let converted = money(input.amount, from)?.convert(fx).map_err(tvm)?;
+        Ok(Json(converted.into()))
     }
 }
 

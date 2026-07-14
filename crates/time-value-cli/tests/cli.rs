@@ -684,3 +684,65 @@ fn amortize_echoes_currency_as_a_comment_line() {
         .success()
         .stdout(predicate::str::contains("# currency: USD"));
 }
+
+// ---- Foreign exchange (convert): ADR-0034/0037, #67 ----------------------
+
+#[test]
+fn convert_restates_an_amount_in_the_target_currency() {
+    // 100 USD at 0.9 USD->EUR = 90 EUR; the target code is echoed.
+    time_value()
+        .args([
+            "convert", "--from", "USD", "--to", "EUR", "--rate", "0.9", "100",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("90").and(predicate::str::contains("EUR")));
+}
+
+#[test]
+fn convert_json_carries_the_target_currency() {
+    time_value()
+        .args([
+            "--json", "convert", "--from", "GBP", "--to", "USD", "--rate", "1.25", "80",
+        ])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("\"value\":100.0")
+                .and(predicate::str::contains("\"currency\":\"USD\"")),
+        );
+}
+
+#[test]
+fn convert_to_agnostic_stays_a_bare_number() {
+    // Converting into XXX drops the code, matching every other monetary result.
+    time_value()
+        .args([
+            "convert", "--from", "USD", "--to", "XXX", "--rate", "0.9", "100",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("XXX").not());
+}
+
+#[test]
+fn convert_rejects_a_non_positive_rate() {
+    time_value()
+        .args([
+            "convert", "--from", "USD", "--to", "EUR", "--rate", "0", "100",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("exchange rate"));
+}
+
+#[test]
+fn convert_rejects_an_unknown_currency_code() {
+    time_value()
+        .args([
+            "convert", "--from", "ZZZ", "--to", "EUR", "--rate", "0.9", "100",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("ZZZ"));
+}
