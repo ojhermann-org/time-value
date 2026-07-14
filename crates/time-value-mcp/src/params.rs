@@ -340,6 +340,35 @@ pub(crate) struct AnnuityValueInput {
     pub currency: Option<CurrencyCode>,
 }
 
+/// Input for the `continuous_future_value` and `continuous_present_value` tools.
+/// `rate` is the force of interest δ; `years` is a continuous span (it may be
+/// fractional or negative), not a period count (ADR-0036).
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ContinuousValueInput {
+    /// The force of interest δ (e.g. `0.05` for a 5% continuously compounded
+    /// annual rate).
+    pub rate: f64,
+    /// The span in years (a continuous duration; may be fractional or negative).
+    pub years: f64,
+    /// The amount to grow (`continuous_future_value`) or discount
+    /// (`continuous_present_value`).
+    pub amount: f64,
+    /// ISO 4217 currency to denominate the amounts in (e.g. `USD`, `JPY`).
+    /// Omit for currency-agnostic (`XXX`) amounts. An unknown code is rejected.
+    #[serde(default)]
+    pub currency: Option<CurrencyCode>,
+}
+
+/// Input for the `continuous_from_effective` and `continuous_effective` bridge
+/// tools — a single rate, whose meaning depends on the tool (an effective annual
+/// rate in, or a force of interest in). Rate-only, so no currency.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub(crate) struct ContinuousRateInput {
+    /// For `continuous_from_effective`, an effective annual rate (e.g. `0.05`);
+    /// for `continuous_effective`, a force of interest δ.
+    pub rate: f64,
+}
+
 /// Input for the `convert` tool (foreign-exchange). The amount is denominated in
 /// `from`; the result is in `to`. Unlike the amount-bearing tools, currency is
 /// intrinsic here, so `from`/`to` are required (not the optional `currency`

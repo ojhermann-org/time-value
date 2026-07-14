@@ -324,6 +324,30 @@ fn amortize_output_conforms_to_declared_schema() {
     ]);
 }
 
+/// The continuous family: future/present value (monetary) and the two
+/// effective-annual bridges (scalar rates).
+#[test]
+fn continuous_output_conforms_to_declared_schema() {
+    check_conformance(&[
+        Case {
+            tool: "continuous_future_value",
+            args: json!({"rate":0.05,"years":3,"amount":1000,"currency":"USD"}),
+        },
+        Case {
+            tool: "continuous_present_value",
+            args: json!({"rate":0.05,"years":3,"amount":1000}),
+        },
+        Case {
+            tool: "continuous_from_effective",
+            args: json!({"rate":0.05}),
+        },
+        Case {
+            tool: "continuous_effective",
+            args: json!({"rate":0.05}),
+        },
+    ]);
+}
+
 /// The standalone `convert` tool — a monetary result carrying the target
 /// currency (the result is never agnostic when `to` is a real code).
 #[test]

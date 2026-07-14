@@ -14,17 +14,17 @@ use rmcp::{
     tool, tool_handler, tool_router, ErrorData, Json, ServerHandler,
 };
 use time_value::{
-    amortization, annuity, single_sum, Annual, Cashflows, Currency, DatedCashflow, DatedCashflows,
-    FxRate, Money, Monthly, Period, Rate, TvmError,
+    amortization, annuity, continuous, single_sum, Annual, Cashflows, ContinuousRate, Currency,
+    DatedCashflow, DatedCashflows, FxRate, Money, Monthly, Period, Rate, TvmError,
 };
 use time_value_daycount::{act365_year_fraction, iso_to_day};
 
 use crate::params::{
     AmortizeInput, AnnuityPaymentInput, AnnuityPeriodsInput, AnnuityRateInput, AnnuityValueInput,
-    ConvertInput, DatedFlow, DatedIrrInput, DatedSeriesInput, FutureValueInput,
-    GrowingPerpetuityInput, IrrInput, MirrInput, Periodicity, PerpetuityInput, PresentValueInput,
-    RateConvertInput, RateEffectiveAnnualInput, RateFromNominalInput, SeriesInput,
-    SingleSumPeriodsInput, SingleSumRateInput,
+    ContinuousRateInput, ContinuousValueInput, ConvertInput, DatedFlow, DatedIrrInput,
+    DatedSeriesInput, FutureValueInput, GrowingPerpetuityInput, IrrInput, MirrInput, Periodicity,
+    PerpetuityInput, PresentValueInput, RateConvertInput, RateEffectiveAnnualInput,
+    RateFromNominalInput, SeriesInput, SingleSumPeriodsInput, SingleSumRateInput,
 };
 use crate::results::{MoneyResult, ScalarResult, ScheduleResult};
 
@@ -79,6 +79,10 @@ dates, at an annual rate). Single sum: `single_sum_present_value`, \
 Rate conversions: `rate_effective_annual` (EAR), `rate_convert` (between \
 periodicities), `rate_from_nominal` and `rate_nominal` (nominal/APR) — each takes \
 a periodicity (daily, weekly, monthly, quarterly, semi-annual, annual). \
+Continuous compounding: `continuous_future_value` / `continuous_present_value` \
+grow/discount an amount at a force of interest δ (`rate`) over a real-number \
+`years` span (not a period count), and `continuous_from_effective` / \
+`continuous_effective` bridge δ ↔ an effective annual rate. \
 `amortize` returns a schedule (an array of period/payment/interest/principal/\
 balance rows) from a term or a level payment. `convert` restates an amount in \
 another currency at a caller-supplied exchange rate (`amount`, `from`, `to`, \
@@ -572,6 +576,68 @@ impl TimeValueServer {
         let converted = money(input.amount, from)?.convert(fx).map_err(tvm)?;
         Ok(Json(converted.into()))
     }
+
+    #[tool(
+        name = "continuous_future_value",
+        description = "Future value of a present amount grown continuously at a force of interest over a span of years: FV = PV·e^(δ·years). `years` is a continuous duration (may be fractional or negative), not a period count."
+    )]
+    fn continuous_future_value(
+        &self,
+        Parameters(input): Parameters<ContinuousValueInput>,
+    ) -> Result<Json<MoneyResult>, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let money = continuous::future_value(
+            continuous_rate(input.rate)?,
+            input.years,
+            money(input.amount, currency)?,
+        )
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
+    }
+
+    #[tool(
+        name = "continuous_present_value",
+        description = "Present value of a future amount discounted continuously at a force of interest over a span of years: PV = FV·e^(−δ·years) — the inverse of continuous_future_value."
+    )]
+    fn continuous_present_value(
+        &self,
+        Parameters(input): Parameters<ContinuousValueInput>,
+    ) -> Result<Json<MoneyResult>, ErrorData> {
+        let currency = resolve_currency(input.currency.as_deref())?;
+        let money = continuous::present_value(
+            continuous_rate(input.rate)?,
+            input.years,
+            money(input.amount, currency)?,
+        )
+        .map_err(tvm)?;
+        Ok(Json(money.into()))
+    }
+
+    #[tool(
+        name = "continuous_from_effective",
+        description = "The force of interest δ equivalent to an effective annual rate: δ = ln(1 + r). The bridge from the discrete effective-rate machinery to continuous compounding."
+    )]
+    fn continuous_from_effective(
+        &self,
+        Parameters(input): Parameters<ContinuousRateInput>,
+    ) -> Result<Json<ScalarResult>, ErrorData> {
+        let force = ContinuousRate::from_effective_annual(annual_rate(input.rate)?);
+        Ok(Json(ScalarResult::new(force.value())))
+    }
+
+    #[tool(
+        name = "continuous_effective",
+        description = "The effective annual rate equivalent to a force of interest: r = e^δ − 1. The inverse bridge, letting a continuous rate be compared with discrete per-period rates."
+    )]
+    fn continuous_effective(
+        &self,
+        Parameters(input): Parameters<ContinuousRateInput>,
+    ) -> Result<Json<ScalarResult>, ErrorData> {
+        let r_eff = continuous_rate(input.rate)?
+            .effective_annual()
+            .map_err(tvm)?;
+        Ok(Json(ScalarResult::new(r_eff.value())))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -597,6 +663,12 @@ fn rate(value: f64) -> Result<Rate<Monthly>, ErrorData> {
 /// The dated `xnpv`/`xirr` discount is intrinsically annual (ADR-0029).
 fn annual_rate(value: f64) -> Result<Rate<Annual>, ErrorData> {
     Rate::new(value).map_err(tvm)
+}
+
+/// A force of interest δ for the `continuous_*` tools. Every finite force is valid
+/// — no `> −100%` floor as for a per-period [`Rate`] (ADR-0036).
+fn continuous_rate(value: f64) -> Result<ContinuousRate, ErrorData> {
+    ContinuousRate::new(value).map_err(tvm)
 }
 
 fn period(value: f64) -> Result<Period<Monthly>, ErrorData> {
