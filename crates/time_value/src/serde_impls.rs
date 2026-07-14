@@ -31,10 +31,13 @@ use core::fmt;
 use serde::de::{Error as DeError, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::wire::{FxRateWire, InstallmentWire, MoneyWire};
 use crate::{amortization::Installment, Currency, FxRate, Money, Periodicity, Rate};
 // `Period`, `ContinuousRate`, and `DatedCashflow` live in modules gated behind
 // `std`/`libm` (they need transcendental math), so they do not exist in a pure
 // `no_std` build — their serde impls carry the same gate.
+#[cfg(any(feature = "std", feature = "libm"))]
+use crate::wire::DatedCashflowWire;
 #[cfg(any(feature = "std", feature = "libm"))]
 use crate::{ContinuousRate, DatedCashflow, Period};
 
@@ -99,12 +102,6 @@ impl<'de> Deserialize<'de> for Currency {
 
 // ---- Money: { amount, currency } (currency always present) ----------------
 
-#[derive(Serialize, Deserialize)]
-struct MoneyWire {
-    amount: f64,
-    currency: Currency,
-}
-
 impl Serialize for Money {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         MoneyWire {
@@ -123,13 +120,6 @@ impl<'de> Deserialize<'de> for Money {
 }
 
 // ---- FxRate: { from, to, rate } -------------------------------------------
-
-#[derive(Serialize, Deserialize)]
-struct FxRateWire {
-    from: Currency,
-    to: Currency,
-    rate: f64,
-}
 
 impl Serialize for FxRate {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -150,14 +140,7 @@ impl<'de> Deserialize<'de> for FxRate {
 }
 
 // ---- DatedCashflow: { offset_years, amount } ------------------------------
-// Gated with its module (std/libm), like the bare-number types above.
-
-#[cfg(any(feature = "std", feature = "libm"))]
-#[derive(Serialize, Deserialize)]
-struct DatedCashflowWire {
-    offset_years: f64,
-    amount: Money,
-}
+// Gated with its type (std/libm), like the bare-number types above.
 
 #[cfg(any(feature = "std", feature = "libm"))]
 impl Serialize for DatedCashflow {
@@ -179,15 +162,6 @@ impl<'de> Deserialize<'de> for DatedCashflow {
 }
 
 // ---- Installment: a plain record (no invariant beyond its Moneys) ----------
-
-#[derive(Serialize, Deserialize)]
-struct InstallmentWire {
-    period: u32,
-    payment: Money,
-    interest: Money,
-    principal: Money,
-    balance: Money,
-}
 
 impl Serialize for Installment {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {

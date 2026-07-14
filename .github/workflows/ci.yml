@@ -74,6 +74,11 @@ jobs:
       - name: Clippy (no_std + alloc + libm)
         run: nix develop -c cargo clippy -p time_value --no-default-features --features alloc,libm --all-targets -- -D warnings
 
+      # The schemars (JsonSchema) impls must stay no_std-clean: --all-features pulls
+      # in std, so check the pure no_std + schemars build explicitly (ADR-0044).
+      - name: Clippy (no_std + schemars)
+        run: nix develop -c cargo clippy -p time_value --no-default-features --features schemars --all-targets -- -D warnings
+
       # `--all-features` so feature-gated operations (and their tests) are
       # exercised, not just compiled.
       - name: Test

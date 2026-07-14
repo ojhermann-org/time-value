@@ -115,7 +115,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<SeriesInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let money = series.net_present_value(rate(input.rate)?).map_err(tvm)?;
@@ -130,7 +130,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<SeriesInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let money = series.net_future_value(rate(input.rate)?).map_err(tvm)?;
@@ -145,7 +145,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<IrrInput>,
     ) -> Result<Json<ScalarResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let irr = series
@@ -162,7 +162,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<MirrInput>,
     ) -> Result<Json<ScalarResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let mirr = series
@@ -179,7 +179,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<DatedSeriesInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let flows = dated_flows(&input.flows, currency)?;
         let series = DatedCashflows::new(&flows);
         let money = series
@@ -196,7 +196,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<DatedIrrInput>,
     ) -> Result<Json<ScalarResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let flows = dated_flows(&input.flows, currency)?;
         let series = DatedCashflows::new(&flows);
         let irr = series
@@ -213,7 +213,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<PresentValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = single_sum::present_value(
             rate(input.rate)?,
             period(input.periods)?,
@@ -231,7 +231,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<FutureValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = single_sum::future_value(
             rate(input.rate)?,
             period(input.periods)?,
@@ -249,7 +249,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<SingleSumPeriodsInput>,
     ) -> Result<Json<ScalarResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let periods = single_sum::periods(
             rate(input.rate)?,
             money(input.present, currency)?,
@@ -267,7 +267,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<SingleSumRateInput>,
     ) -> Result<Json<ScalarResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let solved = single_sum::rate::<Monthly>(
             period(input.periods)?,
             money(input.present, currency)?,
@@ -285,7 +285,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = annuity::present_value(
             rate(input.rate)?,
             period(input.periods)?,
@@ -303,7 +303,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = annuity::future_value(
             rate(input.rate)?,
             period(input.periods)?,
@@ -321,7 +321,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityPaymentInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let payment = annuity::payment(
             rate(input.rate)?,
             period(input.periods)?,
@@ -339,7 +339,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityPeriodsInput>,
     ) -> Result<Json<ScalarResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let r = rate(input.rate)?;
         let pmt = money(input.payment, currency)?;
         let periods = match anchor(input.present, input.future)? {
@@ -358,7 +358,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityRateInput>,
     ) -> Result<Json<ScalarResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let n = period(input.periods)?;
         let pmt = money(input.payment, currency)?;
         let solved = match anchor(input.present, input.future)? {
@@ -377,7 +377,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<PerpetuityInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money =
             annuity::perpetuity(rate(input.rate)?, money(input.payment, currency)?).map_err(tvm)?;
         Ok(Json(money.into()))
@@ -391,7 +391,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<GrowingPerpetuityInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = annuity::growing_perpetuity(
             rate(input.rate)?,
             rate(input.growth)?,
@@ -409,7 +409,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = annuity::due::present_value(
             rate(input.rate)?,
             period(input.periods)?,
@@ -427,7 +427,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = annuity::due::future_value(
             rate(input.rate)?,
             period(input.periods)?,
@@ -445,7 +445,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AnnuityPaymentInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let payment = annuity::due::payment(
             rate(input.rate)?,
             period(input.periods)?,
@@ -531,7 +531,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<AmortizeInput>,
     ) -> Result<Json<ScheduleResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let r = rate(input.rate)?;
         let principal = money(input.principal, currency)?;
         let schedule = match (input.periods, input.payment) {
@@ -567,12 +567,11 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<ConvertInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        // `from`/`to` are required here (unlike the optional `currency` field), so
-        // there is no agnostic-`XXX` default — but resolving `XXX` explicitly stays
-        // valid (a caller may convert to/from the agnostic unit).
-        let from = resolve_currency(Some(input.from.0.as_str()))?;
-        let to = resolve_currency(Some(input.to.0.as_str()))?;
-        let fx = FxRate::new(from, to, input.rate).map_err(tvm)?;
+        // `from`/`to` are required `Currency` values (resolved at deserialize),
+        // unlike the optional `currency` field; `XXX` stays valid (a caller may
+        // convert to/from the agnostic unit).
+        let from = input.from;
+        let fx = FxRate::new(from, input.to, input.rate).map_err(tvm)?;
         let converted = money(input.amount, from)?.convert(fx).map_err(tvm)?;
         Ok(Json(converted.into()))
     }
@@ -585,7 +584,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<ContinuousValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = continuous::future_value(
             continuous_rate(input.rate)?,
             input.years,
@@ -603,7 +602,7 @@ impl TimeValueServer {
         &self,
         Parameters(input): Parameters<ContinuousValueInput>,
     ) -> Result<Json<MoneyResult>, ErrorData> {
-        let currency = resolve_currency(input.currency.as_deref())?;
+        let currency = resolve_currency(input.currency);
         let money = continuous::present_value(
             continuous_rate(input.rate)?,
             input.years,
@@ -675,16 +674,13 @@ fn period(value: f64) -> Result<Period<Monthly>, ErrorData> {
     Period::new(value).map_err(tvm)
 }
 
-/// Resolve an optional ISO 4217 code to a [`Currency`]: `None` (the field was
-/// omitted) is `Xxx` (currency-agnostic), preserving the pre-currency behaviour;
-/// an unknown code is an `invalid_params` error.
-fn resolve_currency(code: Option<&str>) -> Result<Currency, ErrorData> {
-    match code {
-        None => Ok(Currency::Xxx),
-        Some(code) => Currency::from_code(code).ok_or_else(|| {
-            ErrorData::invalid_params(format!("unknown ISO 4217 currency code `{code}`"), None)
-        }),
-    }
+/// An omitted `currency` field (`None`) is [`Currency::Xxx`] (currency-agnostic),
+/// preserving the pre-currency behaviour. A *present* code was already resolved to
+/// a [`Currency`] (or rejected with the friendly "unknown ISO 4217 code" error) by
+/// the core's `serde` `Deserialize` at the boundary (ADR-0044), so this is now
+/// infallible.
+fn resolve_currency(code: Option<Currency>) -> Currency {
+    code.unwrap_or(Currency::Xxx)
 }
 
 fn money(value: f64, currency: Currency) -> Result<Money, ErrorData> {
