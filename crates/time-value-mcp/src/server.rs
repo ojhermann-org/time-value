@@ -11,7 +11,7 @@
 use rmcp::{
     handler::server::{tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router, ErrorData, ServerHandler,
+    tool, tool_handler, tool_router, ErrorData, Json, ServerHandler,
 };
 use time_value::{
     amortization, annuity, single_sum, Annual, Cashflows, Currency, DatedCashflow, DatedCashflows,
@@ -25,6 +25,7 @@ use crate::params::{
     MirrInput, PerpetuityInput, PresentValueInput, RateConvertInput, RateEffectiveAnnualInput,
     RateFromNominalInput, SeriesInput, SingleSumPeriodsInput, SingleSumRateInput,
 };
+use crate::results::{MoneyResult, ScalarResult};
 
 /// Run `$body` with the type alias `$ty` bound to the periodicity marker named by
 /// `$name` at runtime; an unknown name returns an MCP `invalid_params` error from
@@ -111,58 +112,64 @@ impl TimeValueServer {
         name = "npv",
         description = "Net present value of a cashflow series discounted at a per-period rate: sum of CF_t / (1+r)^t."
     )]
-    fn npv(&self, Parameters(input): Parameters<SeriesInput>) -> Result<CallToolResult, ErrorData> {
+    fn npv(
+        &self,
+        Parameters(input): Parameters<SeriesInput>,
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
-        let value = series
-            .net_present_value(rate(input.rate)?)
-            .map_err(tvm)?
-            .value();
-        Ok(result_money("npv", value, currency))
+        let money = series.net_present_value(rate(input.rate)?).map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
         name = "nfv",
         description = "Net future value of a cashflow series compounded to its final period at a per-period rate."
     )]
-    fn nfv(&self, Parameters(input): Parameters<SeriesInput>) -> Result<CallToolResult, ErrorData> {
+    fn nfv(
+        &self,
+        Parameters(input): Parameters<SeriesInput>,
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
-        let value = series
-            .net_future_value(rate(input.rate)?)
-            .map_err(tvm)?
-            .value();
-        Ok(result_money("nfv", value, currency))
+        let money = series.net_future_value(rate(input.rate)?).map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
         name = "irr",
         description = "Internal rate of return (per period) of a cashflow series: the rate at which its net present value is zero."
     )]
-    fn irr(&self, Parameters(input): Parameters<IrrInput>) -> Result<CallToolResult, ErrorData> {
+    fn irr(
+        &self,
+        Parameters(input): Parameters<IrrInput>,
+    ) -> Result<Json<ScalarResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let irr = series
             .internal_rate_of_return_from(input.guess)
             .map_err(tvm)?;
-        Ok(result("irr", irr.value()))
+        Ok(Json(ScalarResult::new(irr.value())))
     }
 
     #[tool(
         name = "mirr",
         description = "Modified internal rate of return (per period): discounts outflows at a finance rate and compounds inflows at a reinvestment rate, then equates the two over the series' life."
     )]
-    fn mirr(&self, Parameters(input): Parameters<MirrInput>) -> Result<CallToolResult, ErrorData> {
+    fn mirr(
+        &self,
+        Parameters(input): Parameters<MirrInput>,
+    ) -> Result<Json<ScalarResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let flows = cashflows(&input.cashflows, currency)?;
         let series = Cashflows::<Monthly>::new(&flows);
         let mirr = series
             .modified_internal_rate_of_return(rate(input.finance)?, rate(input.reinvest)?)
             .map_err(tvm)?;
-        Ok(result("mirr", mirr.value()))
+        Ok(Json(ScalarResult::new(mirr.value())))
     }
 
     #[tool(
@@ -172,15 +179,14 @@ impl TimeValueServer {
     fn xnpv(
         &self,
         Parameters(input): Parameters<DatedSeriesInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<MoneyResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let flows = dated_flows(&input.flows, currency)?;
         let series = DatedCashflows::new(&flows);
-        let value = series
+        let money = series
             .net_present_value(annual_rate(input.rate)?)
-            .map_err(tvm)?
-            .value();
-        Ok(result_money("xnpv", value, currency))
+            .map_err(tvm)?;
+        Ok(Json(money.into()))
     }
 
     #[tool(
@@ -190,14 +196,14 @@ impl TimeValueServer {
     fn xirr(
         &self,
         Parameters(input): Parameters<DatedIrrInput>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<Json<ScalarResult>, ErrorData> {
         let currency = resolve_currency(input.currency.as_deref())?;
         let flows = dated_flows(&input.flows, currency)?;
         let series = DatedCashflows::new(&flows);
         let irr = series
             .internal_rate_of_return_from(input.guess)
             .map_err(tvm)?;
-        Ok(result("xirr", irr.value()))
+        Ok(Json(ScalarResult::new(irr.value())))
     }
 
     #[tool(

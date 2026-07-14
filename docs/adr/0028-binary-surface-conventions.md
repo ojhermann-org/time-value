@@ -1,8 +1,19 @@
 # ADR-0028: Binary surface conventions (CLI grammar & MCP tools)
 
-- **Status:** Accepted
+- **Status:** Accepted (its output-shape convention, §4/§5, amended by
+  [ADR-0039](0039-typed-output-layer-for-the-binaries.md))
 - **Date:** 2026-07-13
 - **Deciders:** Project owner
+
+> **Amended (2026-07-14) by [ADR-0039](0039-typed-output-layer-for-the-binaries.md).**
+> §4/§5 below key each scalar result by the operation's tool name (`{"npv": …}`).
+> ADR-0039's typed output layer replaces that with a **uniform, reusable** shape —
+> a monetary result is `{ "value": …, "currency"?: … }`, a rate/period result is
+> `{ "value": … }`, and a tabular result is `{ "<schedule>": [ … ], "currency"?: … }`
+> — since the operation is already identified by the tool name (MCP) and the
+> command (CLI), so re-keying by it was redundant. The **naming** rules of §5 (the
+> tool-name vocabulary) still stand; only the result *key* changes. Retained as the
+> reasoning for that vocabulary.
 
 ## Context
 
