@@ -331,4 +331,47 @@ proptest! {
             1e-6 * total
         ));
     }
+
+    /// The continuous bridge is a round trip: the force of interest equivalent to
+    /// an effective annual rate converts back to that same rate (ADR-0036). This
+    /// generalises the `bridges_to_and_from_the_effective_annual_rate` point test
+    /// to the whole class of rates.
+    ///
+    /// The band is bounded to realistic effective-annual rates (−90% … +200%);
+    /// far outside it the intermediate `e^δ` over-/under-flows, a regime the
+    /// dedicated overflow/floor unit tests pin instead. The quantity compared is
+    /// the growth factor `1 + r`, relative to its size.
+    #[test]
+    fn continuous_bridge_round_trips_the_effective_annual_rate(rate in -0.9f64..2.0) {
+        use time_value::{Annual, ContinuousRate};
+
+        let effective = Rate::<Annual>::new(rate).unwrap();
+        let force = ContinuousRate::from_effective_annual(effective);
+        // δ = ln(1 + r), then e^δ − 1 recovers r.
+        let back = force.effective_annual().unwrap();
+        prop_assert!(close(1.0 + back.value(), 1.0 + rate, 1e-9 * (1.0 + rate)));
+    }
+
+    /// Continuous discounting inverts continuous compounding: growing an amount at
+    /// a force of interest over a horizon then discounting it back over the same
+    /// horizon recovers the amount (ADR-0036). This generalises the
+    /// `present_value_inverts_future_value_and_keeps_currency` point test.
+    ///
+    /// The force × horizon is bounded so `e^{δ·t}` stays comfortably finite; the
+    /// error is a few ulps of the amount, so a relative tolerance keeps it
+    /// scale-independent.
+    #[test]
+    fn continuous_present_value_inverts_future_value(
+        amount in 1.0f64..1e6,
+        force in -0.5f64..0.5,
+        years in 0.0f64..30.0,
+    ) {
+        use time_value::{continuous, ContinuousRate};
+
+        let rate = ContinuousRate::new(force).unwrap();
+        let present = Money::agnostic(amount).unwrap();
+        let future = continuous::future_value(rate, years, present).unwrap();
+        let back = continuous::present_value(rate, years, future).unwrap();
+        prop_assert!(close(back.value(), present.value(), 1e-6 * present.value()));
+    }
 }
