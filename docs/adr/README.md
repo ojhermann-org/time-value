@@ -63,3 +63,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0042](0042-serde-support.md) | `serde` support — an optional, validating wire format | Accepted (amends 0019) |
 | [0043](0043-owned-cashflows.md) | Owned cashflows — `OwnedCashflows` behind an `alloc` feature | Accepted |
 | [0044](0044-schemars-support.md) | `schemars` support — JsonSchema companion to the serde wire format | Accepted |
+| [0045](0045-make-illegal-states-unrepresentable.md) | Make illegal states unrepresentable; test the class, not the instance | Accepted |

@@ -1720,6 +1720,54 @@ impl fmt::Display for Currency {
 mod tests {
     use super::Currency;
 
+    // Compile-time tripwire against `Currency::ALL` drift (ADR-0045). `meta`
+    // already forces every variant to carry metadata; this forces every variant
+    // to be *named* here too. Adding a variant makes this match non-exhaustive,
+    // so rustc fails the build until you name it — at which point this note sends
+    // you to `Currency::ALL` and `EXPECTED_VARIANTS` below. It is a tripwire, not
+    // a proof: stable Rust can't enumerate an enum's variants without a hand-list
+    // or a proc-macro (`strum`), which the zero-dep core forgoes.
+    #[allow(clippy::enum_glob_use)]
+    fn _every_variant_is_named(c: Currency) {
+        use Currency::*;
+        match c {
+            Aed | Afn | All | Amd | Aoa | Ars | Aud | Awg | Azn | Bam | Bbd | Bdt | Bhd | Bif
+            | Bmd | Bnd | Bob | Bov | Brl | Bsd | Btn | Bwp | Byn | Bzd | Cad | Cdf | Che | Chf
+            | Chw | Clf | Clp | Cny | Cop | Cou | Crc | Cup | Cve | Czk | Djf | Dkk | Dop | Dzd
+            | Egp | Ern | Etb | Eur | Fjd | Fkp | Gbp | Gel | Ghs | Gip | Gmd | Gnf | Gtq | Gyd
+            | Hkd | Hnl | Htg | Huf | Idr | Ils | Inr | Iqd | Irr | Isk | Jmd | Jod | Jpy | Kes
+            | Kgs | Khr | Kmf | Kpw | Krw | Kwd | Kyd | Kzt | Lak | Lbp | Lkr | Lrd | Lsl | Lyd
+            | Mad | Mdl | Mga | Mkd | Mmk | Mnt | Mop | Mru | Mur | Mvr | Mwk | Mxn | Mxv | Myr
+            | Mzn | Nad | Ngn | Nio | Nok | Npr | Nzd | Omr | Pab | Pen | Pgk | Php | Pkr | Pln
+            | Pyg | Qar | Ron | Rsd | Rub | Rwf | Sar | Sbd | Scr | Sdg | Sek | Sgd | Shp | Sle
+            | Sos | Srd | Ssp | Stn | Svc | Syp | Szl | Thb | Tjs | Tmt | Tnd | Top | Try | Ttd
+            | Twd | Tzs | Uah | Ugx | Usd | Uyi | Uyu | Uyw | Uzs | Ved | Ves | Vnd | Vuv | Wst
+            | Xad | Xaf | Xag | Xau | Xba | Xbb | Xbc | Xbd | Xcd | Xcg | Xdr | Xof | Xpd | Xpf
+            | Xpt | Xsu | Xts | Xua | Xxx | Yer | Zar | Zmw | Zwg => {}
+        }
+    }
+
+    #[test]
+    fn all_lists_every_variant_once() {
+        // `_every_variant_is_named` forces awareness on the enum side; this pins
+        // the `ALL` side. If a new variant is added to the enum but not to `ALL`,
+        // the length check fails once `EXPECTED_VARIANTS` is bumped to match; and
+        // no variant may appear twice.
+        const EXPECTED_VARIANTS: usize = 177;
+        assert_eq!(
+            Currency::ALL.len(),
+            EXPECTED_VARIANTS,
+            "add the new variant to `ALL` and bump `EXPECTED_VARIANTS`"
+        );
+        for (i, &c) in Currency::ALL.iter().enumerate() {
+            assert!(
+                !Currency::ALL[..i].contains(&c),
+                "{} listed twice in ALL",
+                c.code()
+            );
+        }
+    }
+
     #[test]
     fn code_round_trips_through_from_code() {
         for &c in Currency::ALL {

@@ -44,6 +44,26 @@ logged under `docs/adr/`.
   chosen at runtime — is a value. (This supersedes ADR-0005's earlier "`Money` is a
   plain untagged newtype" stance.)
 
+## Testing & design discipline (ADR-0045)
+
+Two standing rules; ADR-0045 has the full statement and rationale.
+
+- **Make illegal states unrepresentable.** When a decision could encode an
+  invariant in a type the compiler (or serde, at the wire boundary) checks, prefer
+  that over a comment, a convention, or a runtime check — at the *chokepoint*, not
+  each call site. This is a design test for **new** work, not a retrofit mandate,
+  and it has a boundary: genuinely open or runtime-chosen sets stay values (that's
+  why currency is a runtime value, not a type tag), and a newtype that catches no
+  real failure mode is not an improvement.
+- **Test the class, not the instance; pin every stated assumption.** When a
+  rustdoc line or an ADR *asserts* a behaviour ("NPV decreases as the rate rises",
+  "PV inverts FV", "`ALL` lists every currency", "the periodicities must match"),
+  that assertion earns a test that fails the moment the code stops honouring it.
+  Where the assumption is a *universal*, prefer a proptest property over a point
+  test; where the domain is a small *finite* enum, prefer exhaustive iteration
+  over sampling; where the invariant lives in the type system, a `compile_fail`
+  doctest is the test.
+
 ## Tooling (Nix-native, no prek)
 
 - `flake.nix` is the single source of truth **for the toolchain**: a devShell
