@@ -15,6 +15,21 @@
 //! extreme rate/period magnitudes a value can overflow to a non-finite
 //! [`Money`] (see its docs). A perpetuity instead diverges when its rate does not
 //! exceed its growth rate, which its constructors reject.
+//!
+//! Like every rate-and-period operation, the dated annuity functions require the
+//! `rate` and `periods` to share a periodicity: a `Rate<Monthly>` applied over a
+//! `Period<Annual>` is a compile error, not a silent unit mismatch (ADR-0005,
+//! ADR-0045):
+//!
+//! ```compile_fail
+//! use time_value::{annuity, Annual, Money, Monthly, Period, Rate};
+//!
+//! let _ = annuity::present_value(
+//!     Rate::<Monthly>::new(0.01).unwrap(),
+//!     Period::<Annual>::new(12.0).unwrap(), // annual periods, monthly rate — won't compile
+//!     Money::agnostic(100.0).unwrap(),
+//! );
+//! ```
 
 use crate::math::{ln, powf};
 use crate::root::{abs, bracket_and_bisect, relative_tolerance};
