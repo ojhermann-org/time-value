@@ -66,6 +66,18 @@
 //! those same types, describing the identical shapes
 //! (`docs/adr/0044-schemars-support.md`).
 //!
+//! ## Thread safety
+//!
+//! The public types are plain data with no interior mutability, so the owned
+//! value types ([`Money`], [`Rate<P>`], [`Currency`], [`TvmError`], the
+//! [`amortization`] types, and the feature-gated [`Period<P>`], [`ContinuousRate`],
+//! [`OwnedCashflows`], …) are **`Send + Sync + 'static`**, and the borrowing views
+//! ([`Cashflows<P>`], [`DatedCashflows`]) are **`Send + Sync`** (they are not
+//! `'static` only because they borrow). This is a maintained part of the API — it
+//! lets callers move values across threads, share them by `&`/`Arc`, and hold them
+//! across `.await` in a `Send` future — and it is locked by `tests/thread_safety.rs`
+//! (`docs/adr/0046-thread-safety-of-the-public-types.md`).
+//!
 //! ```
 //! use time_value::{Cashflows, Money, Monthly, Rate};
 //!
