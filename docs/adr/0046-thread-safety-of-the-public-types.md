@@ -8,6 +8,9 @@
   (`no_std` + zero-dep — the lock adds neither), [ADR-0043](0043-owned-cashflows.md)
   (the owned vs. borrowed split this contract distinguishes)
 
+> **Canonical for the sibling Rust MCP repos** (`ferric-fred`, `rustrolabe`) for
+> the auto-trait decide-and-pin discipline — see [ADR-0047](0047-shared-disciplines-across-the-sibling-rust-mcp-repos.md).
+
 ## Context
 
 `time_value` is synchronous and holds no shared mutable state, so "thread safety"
