@@ -65,3 +65,4 @@ the old one **Superseded** (link both ways) — don't rewrite the old one.
 | [0044](0044-schemars-support.md) | `schemars` support — JsonSchema companion to the serde wire format | Accepted |
 | [0045](0045-make-illegal-states-unrepresentable.md) | Make illegal states unrepresentable; test the class, not the instance | Accepted |
 | [0046](0046-thread-safety-of-the-public-types.md) | The public value types are thread-safe (`Send + Sync`), locked by a test | Accepted |
+| [0047](0047-shared-disciplines-across-the-sibling-rust-mcp-repos.md) | Shared disciplines across the sibling Rust MCP repos — a cross-repo index | Accepted |
