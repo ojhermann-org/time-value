@@ -59,6 +59,18 @@ gate. It is zero-cost, zero-dependency, and `no_std`-clean (an integration test
 links `std`, but asserts nothing that requires it of the crate). It passes today;
 it fails to compile the moment a field regresses the profile.
 
+**Scope of the mechanism — it pins *positive* bounds only.** A generic helper can
+require a trait (`T: Send + Sync`); it cannot require the *absence* of one. There
+is no bound expressing `!Sync`, so this pattern cannot lock a **deliberately
+inverse** profile — `rustrolabe`'s `Send + !Sync` handle being the live example
+among the siblings for whom this ADR is canonical ([ADR-0047](0047-shared-disciplines-across-the-sibling-rust-mcp-repos.md)).
+Pinning a negative needs a different tool: a **`compile_fail` doctest** (the
+zero-dep route — the same mechanism ADR-0045 already uses to lock the periodicity
+mismatch) or `static_assertions::assert_not_impl_any!` (a dependency this crate
+forgoes). The decide-and-pin *rule* is direction-agnostic; only this *harness* is
+not, so a repo with an inverse profile should pin the positive half here
+(`assert_send`) and the negative half with a `compile_fail` doctest.
+
 ## Consequences
 
 - The profile is now a **semver commitment**: the owned types will stay
